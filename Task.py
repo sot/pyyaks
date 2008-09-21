@@ -1,14 +1,12 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
 
-import logging
 import os
 from stat import ST_MTIME # Really constants 7 and 8
 from traceback import format_exc
 from ContextValue import render
+from Logging import debug, verbose, info, warning, error, critical
 
-logging.basicConfig()
-log = logging.getLogger('Task')
-log.setLevel(logging.DEBUG)
+# Module var for maintaining status of current set of tasks
 status = dict(fail = False)
 
 class DependFileMissing(Exception):
@@ -33,7 +31,9 @@ def check_depend(depends=None, targets=None):
 
     for filetype, files in filetypes.items():
         if files:
+            debug('Checking %s files: %s' % (filetype, str(files)))
             for file_ in files:
+                file_ = render(file_)
                 if os.path.exists(file_):
                     mtime[filetype].append(os.stat(file_)[ST_MTIME])
                 else:
@@ -52,7 +52,9 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             if status['fail'] and not always:
                 return
 
-            log.info(' Running %s' % func.func_name)
+            verbose('-' * 40)
+            info(' Running task: %s' % func.func_name)
+            verbose('-' * 40)
             origdir = os.getcwd()
             # origenv = ...
 
@@ -61,7 +63,9 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             try:
                 if dir:
                     try:
-                        os.chdir(str(dir))
+                        newdir = render(dir)
+                        debug('Changing to directory "%s"' % newdir)
+                        os.chdir(newdir)
                     except OSError, msg:
                         raise TaskFailure, msg
 
@@ -88,7 +92,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             except TaskSuccess:
                 pass
             except (TaskFailure, DependFileMissing), msg:
-                log.error('%s: %s\n\n' % (func.func_name, msg))
+                error('%s: %s\n\n' % (func.func_name, msg))
                 status['fail'] = True
 
             if env:
@@ -108,14 +112,14 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
 def start(message=None):
     status['fail'] = False
     if message is not None:
-        print '*' * 60
-        print '** %-54s **' % message
-        print '*' * 60
+        info('*' * 60)
+        info('** %-54s **' % message)
+        info('*' * 60)
 
 def end(message=None):
     if message is not None:
-        print '*' * 60
-        print '** %-54s **' % (message + (status['fail'] and ' FAILED' or ' SUCCEEDED'))
-        print '*' * 60
+        info('*' * 60)
+        info('** %-54s **' % (message + (status['fail'] and ' FAILED' or ' SUCCEEDED')))
+        info('*' * 60)
     status['fail'] = False
         

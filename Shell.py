@@ -24,7 +24,7 @@ def sendline_expect_func(prompt):
         if quiet:
             self.logfile_read = logfile_read
 
-        return os.linesep.join(self.before.splitlines()[1:])
+        return self.before.splitlines()[1:]
 
     return sendline_expect
 
@@ -73,7 +73,7 @@ def parse_keyvals(keyvalstr):
             keyvalout[key] = val
     return keyvalout
 
-def bash(cmdstr, logfile=sys.stdout, keep_env=None):
+def bash(cmdstr, logfile=None, keep_env=None):
     """Run the command string cmdstr in a bash shell.  It can have multiple
     lines.  Each line is separately sent to the shell.  The exit status is
     checked if the shell comes back with a PS1 prompt. Bash control structures
@@ -86,9 +86,6 @@ def bash(cmdstr, logfile=sys.stdout, keep_env=None):
     Input: command string
     Output: exit status"""
 
-    print '\nRunning command(s):'
-    print MyTemplate(cmdstr).safe_substitute(dict(os.environ)), '\n'
-
     os.environ['PS1'] = PROMPT1
     os.environ['PS2'] = PROMPT2
     shell = pexpect.spawn('/bin/bash --noprofile --norc --noediting', timeout=1e8)
@@ -96,16 +93,18 @@ def bash(cmdstr, logfile=sys.stdout, keep_env=None):
     shell.logfile_read=logfile
     shell.expect(r'.+')
 
+    outlines = []
     for line in cmdstr.splitlines():
-        shell.sendline_expect(line)
+        outlines += shell.sendline_expect(line)
+
         if re_PROMPT.match(shell.after).group(1) == '>':
             try:
-                exitstr = shell.sendline_expect('echo $?', quiet=True).strip()
+                exitstr = shell.sendline_expect('echo $?', quiet=True)[0].strip()
                 exitstatus = int(exitstr)
             except ValueError:
-                print "\n\n Shell / expect got out of sync:"
-                print " Response to 'echo $?' was apparently '%s'\n\n" % exitstr
-                raise
+                msg = ("Shell / expect got out of sync:\n" + 
+                       "Response to 'echo $?' was apparently '%s'" % exitstr)
+                raise ShellError, msg
                 
             if exitstatus > 0:
                 raise ShellError, 'Bash command %s failed with exit status %d' % (cmdstr,
@@ -122,6 +121,11 @@ def bash(cmdstr, logfile=sys.stdout, keep_env=None):
                 os.environ[key] = newenv[key]
 
     shell.close()
-    print
-    return 0
+
+    # expect leaves a stray prompt when logging, so send a linefeed
+    if logfile:
+        logfile.write('\n')
+
+    return outlines
+
 

@@ -123,7 +123,7 @@ class File(Value):
     rel = property(getrel)
     abs = property(getabs)
 
-class Dict(dict):
+class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the Context and
     overrides __setitem__ to create an appropriate ContextValue when assigning
     to a dict key.  Example:
