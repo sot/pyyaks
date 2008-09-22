@@ -61,10 +61,9 @@ def fix_paths(envs):
                 path_outs.append(path)
         envs[key] = ':'.join(reversed(path_outs))
 
-def parse_keyvals(keyvalstr):
+def parse_keyvals(keyvals):
     """Parse the key=val pairs from the newline-separated string.  Return dict of key=val pairs."""
     re_keyval = re.compile(r'([\w_]+) \s* = \s* (.*)', re.VERBOSE)
-    keyvals = keyvalstr.splitlines()
     keyvalout = {}
     for keyval in keyvals:
         m = re.search(re_keyval, keyval.strip())
@@ -73,7 +72,7 @@ def parse_keyvals(keyvalstr):
             keyvalout[key] = val
     return keyvalout
 
-def bash(cmdstr, logfile=None, keep_env=None):
+def _bash(cmdstr, logfile=None, importenv=False, getenv=False, env=None):
     """Run the command string cmdstr in a bash shell.  It can have multiple
     lines.  Each line is separately sent to the shell.  The exit status is
     checked if the shell comes back with a PS1 prompt. Bash control structures
@@ -84,7 +83,7 @@ def bash(cmdstr, logfile=None, keep_env=None):
     status value is returned.
 
     Input: command string
-    Output: exit status"""
+    Output: shell output"""
 
     os.environ['PS1'] = PROMPT1
     os.environ['PS2'] = PROMPT2
@@ -92,6 +91,12 @@ def bash(cmdstr, logfile=None, keep_env=None):
     shell.delaybeforesend = 0.01
     shell.logfile_read=logfile
     shell.expect(r'.+')
+
+    if env:
+        for key, val in env.items():
+            # Would be better to properly escape any shell characters.
+            # And would be good to make sure this actually worked...
+            shell.sendline_expect("export %s='%s'" % (key, val), quiet=True)
 
     outlines = []
     for line in cmdstr.splitlines():
@@ -111,14 +116,16 @@ def bash(cmdstr, logfile=None, keep_env=None):
                                                                                   exitstatus)
 
     # Update os.environ based on changes to environment made by cmdstr
-    if keep_env:
+    deltaenv = dict()
+    if importenv or getenv:
         currenv = dict(os.environ)
         newenv = parse_keyvals(shell.sendline_expect("printenv", quiet=True))
         fix_paths(newenv)
-        for key in newenv.keys():
+        for key in set(newenv) - set(('PS1', 'PS2', '_', 'SHLVL')):
             if key not in currenv or currenv[key] != newenv[key]:
-                print 'Updating os.environ[%s] = "%s"' % (key, newenv[key])
-                os.environ[key] = newenv[key]
+                deltaenv[key] = newenv[key]
+        if importenv:
+            os.environ.update(deltaenv)
 
     shell.close()
 
@@ -126,6 +133,13 @@ def bash(cmdstr, logfile=None, keep_env=None):
     if logfile:
         logfile.write('\n')
 
-    return outlines
+    return outlines, deltaenv
 
+def bash(cmdstr, logfile=None, importenv=False, env=None):
+    return _bash(cmdstr, logfile=logfile, importenv=importenv, env=env)[0]
 
+def getenv(cmdstr, importenv=False, env=None):
+    return _bash(cmdstr, importenv=importenv, env=env, getenv=True)[1]
+
+def importenv(cmdstr, env=None):
+    return _bash(cmdstr, importenv=True, env=env)[1]

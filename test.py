@@ -2,35 +2,21 @@ import os
 import re
 import sys
 import ContextValue
-from ContextValue import render, render_func, ContextDict
-from Task import task, start as task_start, end as task_end
+from ContextValue import render, ContextDict
+import Task
+from Task import task
 import Shell
-import Logging
-from Logging import debug, verbose, info, warning, error, critical
+import Logging as Log
 
 # Initialize output logging
-loglevel = Logging.VERBOSE
-Logging.init(stdoutlevel=loglevel, format="%(message)s")
+loglevel = Log.VERBOSE
+Log.init(stdoutlevel=loglevel, format="%(message)s")
 
-# Wrap bash function so 1st arg is automatically rendered
-def bash(cmd):
-    class VerboseFileHandle:
-        def __init__(self):
-            self.out = ''
-        def write(self, s):
-            self.out += s
-            if s.endswith(os.linesep):
-                if len(re.sub(Shell.re_PROMPT, '', s).strip()) > 0:
-                    verbose(self.out.strip())
-                self.out = ''
-        def flush(self):
-            self.write('')
-        def close(self):
-            pass
-    logfile = loglevel <= Logging.VERBOSE and VerboseFileHandle() or None
-    cmdlines = [x.strip() for x in cmd.splitlines()]
-    cmd = render(os.linesep.join(cmdlines))
-    return Shell.bash(cmd, logfile=logfile)
+# Create bash wrapper around Shell.bash.  This sets up a file-like object
+# to stream shell pexpect output in a way that plays well with Task output.
+bash = Task.bash(loglevel)
+
+ciaoenv = Shell.getenv('. /soft/ciao/bin/ciao.bash')
 
 # Define src vars
 src = ContextDict('src')
@@ -63,9 +49,16 @@ def make_img():
 @task()
 def ls(dir):
     bash('ls ' + dir)
+
+@task()
+def wait(secs):
     bash("""echo 'hello'
-            sleep 3
-            echo 'world'""")
+            sleep %d
+            echo 'world'""" % secs)
+
+@task()
+def plist(tool='dmlist'):
+    bash('plist %s' % tool, env=ciaoenv)
 
 @task()
 def make_dir(dir):
@@ -76,20 +69,21 @@ def make_dir(dir):
         
 # os.chdir('examples')
 
-debug(src['obsid'])
-debug(str(File['evt2']))
-debug(File['evt2'].abs)
-debug(File['evt2'].rel)
-debug(File['srcdir'].abs)
-debug(render('{{file.evt2.abs}}'))
-debug(render("Working on obsid {{src.obsid}}"))
+Log.debug(src['obsid'])
+Log.debug(str(File['evt2']))
+Log.debug(File['evt2'].abs)
+Log.debug(File['evt2'].rel)
+Log.debug(File['srcdir'].abs)
+Log.debug(render('{{file.evt2.abs}}'))
+Log.debug(render("Working on obsid {{src.obsid}}"))
 
 for src['obsid'] in range(1):
-    task_start(message='Processing for obsid=%s' % src['obsid'])
+    Task.start(message='Processing for obsid=%s' % src['obsid'])
 
     make_dir(File['srcdir'].abs)
     make_evt2()
     make_img()
+    plist('dmcopy')
     ls('{{ file.srcdir }}')
 
-    task_end(message='Processing for obsid=%s' % src['obsid'])
+    Task.end(message='Processing for obsid=%s' % src['obsid'])

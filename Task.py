@@ -1,10 +1,12 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
 
 import os
+import re
 from stat import ST_MTIME # Really constants 7 and 8
 from traceback import format_exc
 from ContextValue import render
-from Logging import debug, verbose, info, warning, error, critical
+import Logging as Log
+import Shell
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
@@ -31,7 +33,7 @@ def check_depend(depends=None, targets=None):
 
     for filetype, files in filetypes.items():
         if files:
-            debug('Checking %s files: %s' % (filetype, str(files)))
+            Log.debug('Checking %s files: %s' % (filetype, str(files)))
             for file_ in files:
                 file_ = render(file_)
                 if os.path.exists(file_):
@@ -52,9 +54,9 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             if status['fail'] and not always:
                 return
 
-            verbose('-' * 40)
-            info(' Running task: %s' % func.func_name)
-            verbose('-' * 40)
+            Log.verbose('-' * 40)
+            Log.info(' Running task: %s' % func.func_name)
+            Log.verbose('-' * 40)
             origdir = os.getcwd()
             # origenv = ...
 
@@ -64,7 +66,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
                 if dir:
                     try:
                         newdir = render(dir)
-                        debug('Changing to directory "%s"' % newdir)
+                        Log.debug('Changing to directory "%s"' % newdir)
                         os.chdir(newdir)
                     except OSError, msg:
                         raise TaskFailure, msg
@@ -92,7 +94,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             except TaskSuccess:
                 pass
             except (TaskFailure, DependFileMissing), msg:
-                error('%s: %s\n\n' % (func.func_name, msg))
+                Log.error('%s: %s\n\n' % (func.func_name, msg))
                 status['fail'] = True
 
             if env:
@@ -112,14 +114,36 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
 def start(message=None):
     status['fail'] = False
     if message is not None:
-        info('*' * 60)
-        info('** %-54s **' % message)
-        info('*' * 60)
+        Log.info('*' * 60)
+        Log.info('** %-54s **' % message)
+        Log.info('*' * 60)
 
 def end(message=None):
     if message is not None:
-        info('*' * 60)
-        info('** %-54s **' % (message + (status['fail'] and ' FAILED' or ' SUCCEEDED')))
-        info('*' * 60)
+        Log.info('*' * 60)
+        Log.info('** %-54s **' % (message + (status['fail'] and ' FAILED' or ' SUCCEEDED')))
+        Log.info('*' * 60)
     status['fail'] = False
         
+# Wrap bash function so 1st arg is automatically rendered
+def bash(loglevel):
+    class VerboseFileHandle:
+        def __init__(self):
+            self.out = ''
+        def write(self, s):
+            self.out += s
+            if s.endswith(os.linesep):
+                if len(re.sub(Shell.re_PROMPT, '', s).strip()) > 0:
+                    Log.verbose(self.out.strip())
+                self.out = ''
+        def flush(self):
+            self.write('')
+        def close(self):
+            pass
+    def newbash(cmd, **kwargs):
+        logfile = loglevel <= Log.VERBOSE and VerboseFileHandle() or None
+        cmdlines = [x.strip() for x in cmd.splitlines()]
+        cmd = render(os.linesep.join(cmdlines))
+        return Shell.bash(cmd, logfile=logfile, **kwargs)
+    return newbash
+
