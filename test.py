@@ -10,7 +10,7 @@ import Logging as Log
 
 # Initialize output logging
 loglevel = Log.VERBOSE
-Log.init(stdoutlevel=loglevel, format="%(message)s")
+Log.init(stdoutlevel=loglevel, filename='test.log', filelevel=loglevel, format="%(message)s")
 
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
 # to stream shell pexpect output in a way that plays well with Task output.
@@ -60,6 +60,14 @@ def wait(secs):
 def plist(tool='dmlist'):
     bash('plist %s' % tool, env=ciaoenv)
 
+@task(env=ciaoenv)
+def plist2(tool='dmlist'):
+    bash("""\
+         plist dmlist
+         plist dmcopy
+         plist dmstat""")
+    
+
 @task()
 def make_dir(dir):
     if not os.path.isdir(dir):
@@ -84,6 +92,7 @@ for src['obsid'] in range(1):
     make_evt2()
     make_img()
     plist('dmcopy')
+    plist2('dmcopy')
     ls('{{ file.srcdir }}')
 
     Task.end(message='Processing for obsid=%s' % src['obsid'])

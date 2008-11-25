@@ -49,6 +49,16 @@ def check_depend(depends=None, targets=None):
     return min(mtime['targets']) >= max(mtime['depends'])
 
 def task(depends=None, targets=None, env=None, always=None, dir=None):
+    """Function decorator to support definition of a processing task.
+
+    @param depends: List of input files that the task depends on
+    @param targets: List of output files that the task creates/updates
+    @param env: Dict of env var updates
+    @param always: Always run the task even if prior processing has failed
+    @param dir: Directory in which to run
+
+    @return: Decorated function
+    """
     def decorate(func):
         def new_func(*args, **kwargs):
             if status['fail'] and not always:
@@ -58,7 +68,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
             Log.info(' Running task: %s' % func.func_name)
             Log.verbose('-' * 40)
             origdir = os.getcwd()
-            # origenv = ...
+            origenv = os.environ.copy()
 
             # Change to specified dir after caching current dir.  Allow for uncaught
             # exception here.  Change this?
@@ -73,7 +83,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
 
                 if env:
                     # Set local environment
-                    pass
+                    os.environ.update(env)
 
                 # Check dependencies before execution.  If met then abort with success
                 if check_depend(depends, targets) and targets:
@@ -99,7 +109,10 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
 
             if env:
                 # Reset local environment
-                pass
+                for envvar in env:
+                    del os.environ[envvar]
+                os.environ.update(origenv)
+                
 
             # Go back to original directory
             if dir:
@@ -125,23 +138,22 @@ def end(message=None):
         Log.info('*' * 60)
     status['fail'] = False
         
-# Wrap bash function so 1st arg is automatically rendered
+
 def bash(loglevel):
+    """Wrap Shell.bash function so input cmd is automatically rendered and
+    output gets Logged if loglevel <= VERBOSE."""
     class VerboseFileHandle:
         def __init__(self):
-            self.out = ''
+            pass
         def write(self, s):
-            self.out += s
-            if s.endswith(os.linesep):
-                if len(re.sub(Shell.re_PROMPT, '', s).strip()) > 0:
-                    Log.verbose(self.out.strip())
-                self.out = ''
+            Log.verbose(s, autonewline=False)
         def flush(self):
-            self.write('')
+            pass
         def close(self):
             pass
+
     def newbash(cmd, **kwargs):
-        logfile = loglevel <= Log.VERBOSE and VerboseFileHandle() or None
+        logfile = (loglevel <= Log.VERBOSE) and VerboseFileHandle() or None
         cmdlines = [x.strip() for x in cmd.splitlines()]
         cmd = render(os.linesep.join(cmdlines))
         return Shell.bash(cmd, logfile=logfile, **kwargs)

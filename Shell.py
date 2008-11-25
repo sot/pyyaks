@@ -3,6 +3,7 @@ import os
 import sys
 import pexpect
 from string import Template
+import time
 
 class ShellError(Exception):
     pass
