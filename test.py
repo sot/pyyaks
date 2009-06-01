@@ -7,6 +7,8 @@ import Task
 from Task import task
 import Shell
 import Logging as Log
+import Util.File
+import Util.CIAO
 
 # Initialize output logging
 loglevel = Log.VERBOSE
@@ -16,7 +18,8 @@ Log.init(stdoutlevel=loglevel, filename='test.log', filelevel=loglevel, format="
 # to stream shell pexpect output in a way that plays well with Task output.
 bash = Task.bash(loglevel)
 
-ciaoenv = Shell.getenv('. /soft/ciao/bin/ciao.bash')
+# ciaoenv = Shell.getenv('. /soft/ciao/bin/ciao.bash')
+# pfiles_dir = Util.CIAO.localize_param_files(ciaoenv)
 
 # Define src vars
 src = ContextDict('src')
@@ -30,6 +33,13 @@ File['srcdir'] = '{{ src.srcdir }}'
 File['evt2']   = '{{ src.srcdir }}/acis_evt2.fits'
 File['img']    = '{{ src.srcdir }}/acis_img.fits'
 File['img2']   = '{{ src.srcdir }}/acis_img2.fits'
+File['myval']  = '{{ src.srcdir }}/myval'
+
+Log.info(src['srcdir'])
+Log.info(render('{{src.srcdir.forma}}'))
+Log.info(File['myval'])
+Log.info(render('{{file.myval.abs}}'))
+sys.exit(0)
 
 # Define tasks (process steps)
 @task(always=True,
@@ -56,9 +66,10 @@ def wait(secs):
             sleep %d
             echo 'world'""" % secs)
 
-@task()
+@task(env=ciaoenv)
 def plist(tool='dmlist'):
-    bash('plist %s' % tool, env=ciaoenv)
+    bash('pset dmlist infile=myfile')
+    bash('plist %s' % tool)
 
 @task(env=ciaoenv)
 def plist2(tool='dmlist'):

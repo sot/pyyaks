@@ -1,7 +1,9 @@
-import django.template
-import django.conf
 import re
 import os
+
+import django.template
+import django.conf
+import Ska.File
 
 Context = {}
 
@@ -13,57 +15,32 @@ except RuntimeError, msg:
 
 def render(s):
     """Convenience function to create an anonymous ContextValue and then render it."""
-    return str(Value(s))
+    if isinstance(s, Value):
+        return str(s)
+    else:
+        return str(Value(s))
 
-def render_func(func):
+def render_first_arg(func):
     """Wrap func so that its first arg is rendered"""
-    def newfunc(*arg, **kwarg):
-        newarg = list(arg)
-        try:
-            newarg[0] = render(newarg[0])
-        except IndexError:
-            pass
-        return func(*newarg, **kwarg)
+    def newfunc(*args, **kwarg):
+        newargs = list(args)
+        if len(newargs) > 0:
+            newargs[0] = render(newargs[0])
+        return func(*newargs, **kwarg)
+    
+    newfunc.func_name = func.func_name
+    newfunc.func_doc = func.func_doc
     return newfunc
 
-def _relative_path(path, basedir=None, currdir=None):
-    """ Find relative path from current directory to desired path.  E.g.
-    currpath = /a/b/c/d
-    destpath = /a/b/hello/there
-    rel = ../../hello/there
+def render_args(func):
+    """Wrap func so that all args rendered"""
+    def newfunc(*args, **kwarg):
+        newargs = [render(x) for x in args]
+        return func(*newargs, **kwarg)
 
-    destpath = /a/b/c/d/e/hello/there
-    rel = e/hello/there
-
-    Special case (don't go up to root):
-    destpath = /x/y/z
-    rel = /x/y/z
-
-    """
-    if currdir is None:
-        currdir = os.getcwd()
-    if basedir is None:
-        basedir = currdir
-
-    currpath = os.path.abspath(currdir)
-    destpath = os.path.abspath(os.path.join(basedir, path))
-    currpaths = currpath.split(os.sep)
-    destpaths = destpath.split(os.sep)
-
-    # Don't go up to root and back.  Since we split() on an abs path the
-    # zero element is always ''
-    if currpaths[1] != destpaths[1]:
-        return destpath
-
-    # Get rid of common path elements
-    while currpaths and destpaths and currpaths[0] == destpaths[0]:
-        currpaths.pop(0)
-        destpaths.pop(0)
-
-    # start with enough '..'s to get to top of common path then get
-    # the rest of the destpaths
-    relpaths = [os.pardir] * len(currpaths) + destpaths
-    return os.path.join(*relpaths)
+    newfunc.func_name = func.func_name
+    newfunc.func_doc = func.func_doc
+    return newfunc
 
 class Value(object):
     def getval(self): return self.__val
@@ -78,11 +55,9 @@ class Value(object):
     val = property(getval, setval)
 
     def __init__(self, val=None, name=None):
-        if isinstance(val, self.__class__):
-            self = val
-        else:
-            self.val = val
-            self.name = name
+        self.val = val
+        self.name = name
+        self.format = None
 
     def __unicode__(self):
         return str(self)
@@ -98,16 +73,26 @@ class Value(object):
                 else:
                     val = newval
         else:
-            val = str(self.val)
+            if self.format:
+                val = self.format % self.val
+            else:
+                val = str(self.val)
         return val
 
 class File(Value):
     def __init__(self, val=None, name=None, basedir=None):
-        super(File, self).__init__(val, name)
+        # First initialize as a regular Value, but strip spaces for convenience
+        super(File, self).__init__(re.sub(' ', '', val), name)
         self.basedir = basedir and os.path.abspath(basedir) or os.getcwd()
 
     def __str__(self):
-        return _relative_path(super(File, self).__str__(), self.basedir)
+        """Return rendered object value as a path relative to cwd.  The
+        value is taken as a path relative to self.basedir."""
+        
+        # Generate filepath as rendered object val relative to basedir.
+        # Note that os.path.join(p1,p2) will ignore p1 if p2 is absolute.
+        filepath = os.path.join(self.basedir, super(File, self).__str__())
+        return Ska.File.relpath(filepath)
 
     def getrel(self):
         return str(self)
@@ -119,6 +104,12 @@ class File(Value):
             return path
         else:
             return os.path.join(self.basedir, path)
+
+    def __getattr__(self, ext):
+        """Any unfound attribute lookup is interpreted as a file extension.
+        A new File object with that extension is returned.
+        """
+        return File(val=self.val + '.' + ext, name=self.name, basedir=self.basedir)
 
     rel = property(getrel)
     abs = property(getabs)
@@ -140,7 +131,24 @@ class ContextDict(dict):
         self.name = name
         self.valuetype = valuetype
         self.kwargs = kwargs
-        
+        self.format = dict()
+
+    def __getitem__(self, key):
+        """Get key value from the ContextDict.  For a ContextDict with valuetype==File
+        then allow for extensions on key.
+        """
+        # If the key is not found then look for an extension and try again without the extension
+        if key not in self and self.valuetype == File:
+            try:
+                base, ext = re.match(r'([^.]+)(\..+)', key).groups()
+                baseFile = dict.__getitem__(self, base)
+                return File(val=baseFile.val + ext, name=baseFile.name, basedir=baseFile.basedir)
+            except:
+                # If any of the above didn't work then fall through and raise KeyError exception
+                # below using original key
+                pass
+
+        return dict.__getitem__(self, key)
 
     def __setitem__(self, key, val):
         if isinstance(val, self.valuetype):
@@ -151,4 +159,51 @@ class ContextDict(dict):
                 dict.__getitem__(self, key).val = val
             else:
                 dict.__setitem__(self, key, self.valuetype(val, key, **self.kwargs))
+                if key in self.format:
+                    dict.__getitem__(self, key).format = self.format[key]
 
+    def update(self, vals):
+        if hasattr(vals, 'items'):
+            vals = vals.items()
+        for key, val in vals:
+            self[key] = val
+
+    def __repr__(self):
+        return str(dict((key, self[key].val) for key in self))
+
+class ContextDictAccessor(object):
+    """Very simple mechanism to access ContextDict values via object attribute
+    syntax.  For a ContextValue.Value object the value is returned.
+    For a ContextValue.File object the relative path name is returned.
+
+    Example::
+
+SrcDict = ContextDict('src')
+Src = ContextDictAccessor(SrcDict)
+SrcDict['test'] = 5.2
+Src.test
+Src.test = 8
+SrcDict['test'].val
+FileDict = ContextDict('file', basedir='/pool14', valuetype=ContextValue.File)
+File = ContextDictAccessor(FileDict)
+File.obs_dir = 'obs{{src.obsid}} /'
+File.obs_dir
+    """
+    def __init__(self, contextdict):
+        object.__setattr__(self, '_contextdict', contextdict)
+
+    def __getattr__(self, name):
+        try:
+            return self._contextdict[name].rel
+        except AttributeError:
+            return self._contextdict[name].val
+
+    def __setattr__(self, name, value):
+        self._contextdict[name] = value
+        
+    def __getitem__(self, name):
+        return self.__getattr__(name)
+    
+    def __setitem__(self, name, value):
+        self.__setattr__(name, value)
+    
