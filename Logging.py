@@ -42,7 +42,7 @@ def init(stdoutlevel=logging.INFO,
 
     #create file handler and set level to debug
     if filename and filelevel is not None:
-        fh = logging.FileHandler(filename)
+        fh = logging.FileHandler(filename, mode='w')
         fh.setLevel(filelevel)
         fh.setFormatter(formatter)
         logger.addHandler(fh)

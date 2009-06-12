@@ -4,75 +4,66 @@ import os
 import re
 import sys
 import cPickle as pickle
+import tempfile
+import math
+import shutil
+import time
 
-import yaml
+print 'load1'
 import Ska.Shell
 import Ska.File
 import Ska.Table
 import Ska.CIAO
 import Chandra.ECF
+import Ska.astro
+import Ska.Numpy
 
+print 'load2'
 import Task
 import Logging as Log
 import ContextValue
-from ContextValue import ContextDict, ContextDictAccessor, render, render_first_arg, render_args
+from ContextValue import ContextDict, render, render_first_arg, render_args
 
+def get_options():
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.set_defaults()
+    parser.add_option("--logdir",
+                      default='logs',
+                      help="Directory for output logs")
+    parser.add_option("--loglevel",
+                      default='task',
+                      help="Log level (debug|task|summary|quiet)")
+    parser.add_option("--filter",
+                      dest = 'filters',
+                      default=[],
+                      action='append',
+                      help="Filter expression")
+    (opt, args) = parser.parse_args()
+    return (opt, args)
+
+opt, args = get_options()
+
+print 'load3'
 # Initialize output logging
-loglevel = Log.DEBUG
-Log.init(stdoutlevel=loglevel, filename='test.log', filelevel=loglevel, format="%(message)s")
+loglevel = dict(debug=Log.DEBUG, task=Log.VERBOSE, summary=Log.INFO, quiet=60)[opt.loglevel]
+if not os.path.exists(opt.logdir):
+    os.mkdir(opt.logdir)
+Log.init(stdoutlevel=loglevel, filename=os.path.join(opt.logdir, time.strftime('%Y-%m-%d:%H:%M:%S')),
+         filelevel=loglevel, format="%(message)s")
 
+print 'load4'
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
 # to stream shell pexpect output in a way that plays well with Task output.
-bash = Task.bash(loglevel)
+bash = Task.bash(loglevel, oneline=True)
 
+print 'load5'
 # Setup CIAO
 ciaoenv = Ska.Shell.getenv('. /soft/ciao/bin/ciao.bash')
 pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
 
+print 'load6'
 # Vars for staxx processing
-input_dir = 'champ*/OBS{{src.obsid.val|stringformat:"05d"}}/XPIPE' # Input data directory glob
-output_dir = 'data/xdat'                            # Output data directory
-objlist = 'sources/sdss_gal_stack0.dat'	        # Object list file
-excllist = 'sources/xsrclist4stackexcl.dat'      # Excluded objects file
-log_file = 'staxx.log'                      # Yaxx log file or directory
-evt2_glob   = 'evt2_ccdid{{src.ccdid}}.fits*'
-expmap_glob = 'expmap_{{src.ccdid}}.fits*'
-asol_glob   = 'pcad*_asol1.fits*'
-
-# Define file aliases
-FILE = ContextDict('file', basedir=output_dir, valuetype=ContextValue.File)
-FILE.update(dict(
-    obs_dir =       'obs{{src.obsid}} / '
-    obs_asol =      'obs{{src.obsid}} / asol'
-    ccd_dir =       'obs{{src.obsid}} / ccd{{src.ccdid}} /'
-    ccd_evt =       'obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2'
-    ccd_expmap =    'obs{{src.obsid}} / ccd{{src.ccdid}} / expmap'
-    ccd_src_dir =   'obs{{src.obsid}} / ccd{{src.ccdid}} / x{{src.xdat_id}}'
-    src_dir =       'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / '
-    asol =          'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / asol'
-    evt =           'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2'
-    cut_evt =       'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_cut_evt2'
-    expmap =        'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap'
-    expmap_cut =    'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_cut'
-    expmap_filled = 'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_fill'
-    src =           'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / src'
-    bkg =           'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / bkg'
-    cut =           'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / cut'
-    fill =          'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / fill'
-    ds9 =           'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / ds9'
-    apphot =        'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot'
-    apphot_exp =    'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot_exp'
-    cut_img =       'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_cut_img'
-    fill_img =      'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_fill_img'
-    info =          'x{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / info'))
-File = ContextDictAccessor(FILE)
-
-# Define src vars
-SRC = ContextDict('src')
-SRC.format.update(dict(ra='%.4f',
-                       dec='%.4f'))
-Src = ContextDictAccessor(SRC)
-
 # Configuration values
 CFG = ContextDict('cfg')
 CFG.update(dict(energy_filter = 'energy=500:7000',
@@ -80,19 +71,74 @@ CFG.update(dict(energy_filter = 'energy=500:7000',
                 psf_energy = 1.5,                 # kev
                 min_src_rad = 4,
                 bkg_ann_mul0 = 2.0,
-                bkg_ann_mul1 = 7.0))
-Cfg = ContextDictAccessor(CFG)
+                bkg_ann_mul1 = 7.0,
+                sizefits = 80,
+                sizejpg = 300,))
+Cfg = CFG.accessor()
+
+input_dir = 'champ*/OBS{{src.obsid.val|stringformat:"05d"}}/XPIPE' # Input data directory glob
+output_dir = 'data'                            # Output data directory
+log_file = 'staxx.log'                      # Yaxx log file or directory
+evt2_glob   = 'evt2_ccdid{{src.ccdid}}.fits*'
+expmap_glob = 'expmap_{{src.ccdid}}.fits*'
+asol_glob   = 'pcad*_asol1.fits*'
+prog_dir = os.path.abspath(os.path.dirname(__file__))
+objlist = 'sources/sdss_gal_stack0.dat'	        # Object list file
+excllist = 'sources/xsrclist4stackexcl.dat'      # Excluded objects file
+
+# Define file aliases
+FILE = ContextDict('file', basedir=output_dir, valuetype=ContextValue.File)
+FILE.update(dict(
+    resources_dir = 'resources / ',
+    index_template ='resources / index_template',
+    pyaxx =         'resources / pyaxx',
+    obs_dir =       'obs{{src.obsid}} / ',
+    obs_asol =      'obs{{src.obsid}} / asol',
+    ccd_dir =       'obs{{src.obsid}} / ccd{{src.ccdid}} /',
+    ccd_evt =       'obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2',
+    ccd_expmap =    'obs{{src.obsid}} / ccd{{src.ccdid}} / expmap',
+    ccd_src_dir =   'obs{{src.obsid}} / ccd{{src.ccdid}} / {{src.xdat_id}} /',
+    src_dir =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / ',
+    index =         '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / index',
+    asol =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / asol',
+    evt =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2',
+    cut_evt =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_cut_evt2',
+    expmap =        '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap',
+    expmap_cut =    '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_cut',
+    expmap_fill =   '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_fill',
+    src =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / src',
+    bkg =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / bkg',
+    cut =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / cut',
+    fill =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / fill',
+    ds9 =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / ds9',
+    apphot =        '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot',
+    apphot_exp =    '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot_exp',
+    src_img =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_src_img',
+    fill_img =      '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_fill_img',
+    info =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / info'))
+File = FILE.accessor()
+
+# Define src vars
+SRC = ContextDict('src')
+SRC.format.update(dict(ra='%.5f',
+                       dec='%.4f'))
+Src = SRC.accessor()
+
+VAL = ContextDict('val')
+Val = VAL.accessor()
 
 # Set up a couple of functions for convenience
 get_globfiles = render_args(Ska.File.get_globfiles)
 make_local_copy = render_args(Ska.File.make_local_copy)
 
+print 'load7'
+
 def vars_in(contextdict, *vars):
+    """Return True if all ``vars`` are elements of ``contextdict``.  This is
+    a convenience function for checking variables dependence in tasks
+    """
     return all(var in contextdict for var in vars)
 
-#####################################################################################
-# Task definitions
-#####################################################################################
 @render_first_arg
 def make_dir(dir_):
     """Make a directory if it doesn't exist."""
@@ -102,93 +148,115 @@ def make_dir(dir_):
             raise Task.TaskFailure('Failed to make directory %s' % dir_)
         Log.verbose('Made directory ' + dir_)
         
-###################################################################################
-@Task.task()
+#####################################################################################
+# Task definitions
+#####################################################################################
+@Task.task(targets=[FILE['src_dir'],
+                    FILE['ccd_dir']])
 def make_xdat_and_src_dirs():
     make_dir(File['src_dir'])
     make_dir(File['ccd_dir'])
 
 ###################################################################################
-@Task.task(dir=File['ccd_dir'])
+@Task.task(dir=FILE['ccd_dir'])
 def make_xdat_to_src_link():
-    if not os.path.exists(File['ccd_src_dir'].rel):
-        os.symlink(File['src_dir'].rel, File['ccd_src_dir'].rel)
-
-###################################################################################
-@Task.task()
-def restore_object_data(filename, obj):
-    filename = render(filename)
-    Log.verbose('Restoring from %s' % filename)
-    if os.path.exists(filename):
-        obj.update(yaml.load(open(filename)))
-
-###################################################################################
-@Task.task()
-def store_object_data(filename, obj):
-    filename = render(filename)
-    Log.verbose('Storing to %s' % filename)
-    yaml.dump(obj, open(filename, 'w'))
+    if not os.path.exists(File['ccd_src_dir']):
+        os.symlink(File['src_dir'], File['ccd_src_dir'])
+        Log.verbose('Made symlink %s -> %s' % (File['src_dir'], File['ccd_src_dir']))
 
 ###################################################################################
 @Task.task()
 def restore_src(filename):
     Log.verbose('Restoring from %s' % filename)
     if os.path.exists(filename):
-        Src.update(pickle.load(open(filename, 'r')))
+        SRC.update(pickle.load(open(filename, 'r')))
         
 ###################################################################################
 @Task.task()
 def store_src(filename):
     Log.verbose('Storing to %s' % filename)
-    pickle.dump(Src, open(filename, 'w'))
+    pickle.dump(SRC, open(filename, 'w'))
 
-@Task.task(targets=(FILE['ccd_evt.fits'],
-                    FILE['evt.fits'],
-                    FILE['ccd_expmap.fits'],
-                    FILE['expmap.fits']))
-def get_evt_expmap_files():
+###################################################################################
+@Task.task(depends=[os.path.join(prog_dir, 'pyaxx.css'),
+                    os.path.join(prog_dir, 'index_template.html')],
+           targets=(FILE['pyaxx.css'],
+                    FILE['index_template.html']))
+def copy_resources():
+    make_dir(File['resources_dir'])
+    for name in ('pyaxx.css', 'index_template.html'):
+        Log.verbose('Copying %s to resources')
+        shutil.copy(os.path.join(prog_dir, name), File[name])
+
+###################################################################################
+@Task.task(targets=[FILE['ccd_evt.fits']])
+def get_ccd_evt_fits():
     f = get_globfiles(os.path.join(input_dir, evt2_glob))[0]
     make_local_copy(f, File['ccd_evt.fits'], linkabs=True)
-    make_local_copy(File['ccd_evt.fits'], File['evt.fits'])
-
-    f = get_globfiles(os.path.join(input_dir, expmap_glob))[0]
-    make_local_copy(f, File['ccd_expmap.fits'], linkabs=True)
-    make_local_copy(File['ccd_expmap.fits'], File['expmap.fits'])
+    Log.verbose('Made local copy %s -> %s' % (render(f), File['ccd_evt.fits']))
 
 
 ###################################################################################
-@Task.task()
+@Task.task(targets=[FILE['ccd_expmap.fits']])
+def get_ccd_expmap_fits():
+    f = get_globfiles(os.path.join(input_dir, expmap_glob))[0]
+    make_local_copy(f, File['ccd_expmap.fits'], linkabs=True)
+    Log.verbose('Made local copy %s -> %s' % (render(f), File['ccd_expmap.fits']))
+
+###################################################################################
+@Task.task(depends=[FILE['ccd_evt.fits']],
+           targets=[FILE['evt.fits']])
+def get_evt_fits():
+    make_local_copy(File['ccd_evt.fits'], File['evt.fits'])
+    Log.verbose('Made local copy %s -> %s' % (File['ccd_evt.fits'], File['evt.fits']))
+
+###################################################################################
+@Task.task(depends=[FILE['ccd_expmap.fits']],
+           targets=[FILE['expmap.fits']])
+def get_expmap_fits():
+    make_local_copy(File['ccd_expmap.fits'], File['expmap.fits'])
+    Log.verbose('Made local copy %s -> %s' % (File['ccd_expmap.fits'], File['expmap.fits']))
+
+###################################################################################
+@Task.task(targets=(FILE['obs_asol.lis'],))
 def get_obs_asol_files():
     files = get_globfiles(os.path.join(input_dir, asol_glob), maxfiles=None)
-    obs_copies = [File['obs_asol'].rel + '_%d.fits' % i for i in range(len(files))]
+    obs_copies = [File['obs_asol'] + '_%d.fits' % i for i in range(len(files))]
     for f, l in zip(files, obs_copies):
         make_local_copy(f, l)
+        Log.verbose('Made local copy %s -> %s' % (render(f), render(l)))
+
     obs_copies_base = [os.path.basename(x) for x in obs_copies]
-    open(File['obs_asol.lis'].rel, 'w').write('\n'.join(obs_copies_base))
+    open(File['obs_asol.lis'], 'w').write('\n'.join(obs_copies_base))
+    Log.verbose('Made %s' % File['obs_asol.lis'])
 
 ###################################################################################
 @Task.task(depends=[FILE['ccd_evt.fits'],
                     FILE['obs_asol.lis'],
                     (vars_in, (SRC, 'ra', 'dec'), {})],
-           targets=[(vars_in, (SRC, 'x', 'y', 'ccd_id', 'theta', 'phi'), {})],
+           targets=[(vars_in, (SRC, 'x', 'y', 'ccdid', 'theta', 'phi'), {})],
            env=ciaoenv)
 def set_coords():
-    coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'].rel,
-                               asolfile='@' + File['obs_asol.lis'].rel,
-                               pos=[Src['ra'].val, Src['dec'].val], coordsys='cel')
-    Src['ccd_id'] =coords['chip_id']
-    Src['x'] = coords['x']              # sky pixels
-    Src['y'] = coords['y']              # sky pixels
-    Src['theta'] = coords['theta']      # arcmin
-    Src['phi'] = coords['phi']          # deg
+    kwargs = dict(evtfile=File['ccd_evt.fits'],
+                  asolfile='@' + File['obs_asol.lis'],
+                  pos=[Src.ra, Src.dec], coordsys='cel')
+    Log.verbose('Running dmcoords(%s)' % str(kwargs))
+    coords = Ska.CIAO.dmcoords(**kwargs)
+    if 'ccdid' not in SRC:
+        Src.ccdid = coords['chip_id']
+    Src.x = coords['x']              # sky pixels
+    Src.y = coords['y']              # sky pixels
+    Src.theta = coords['theta']      # arcmin
+    Src.phi = coords['phi']          # deg
+    Log.debug('dmcoords output: %s' % str(coords))
 
 ###################################################################################
 @Task.task(depends=[(vars_in, (SRC, 'ra', 'dec'), {})],
            targets=[(vars_in, (SRC, 'gal_nh'), {})],
            env=ciaoenv)
 def set_gal_nh():
-    Src['gal_nh'] = Ska.CIAO.colden(Src['ra'].val, Src['dec'].val)
-
+    Src.gal_nh = Ska.CIAO.colden(Src.ra, Src.dec)
+    Log.verbose('Got colden = %.2f' % Src.gal_nh)
 
 ###################################################################################
 @Task.task(depends=[(vars_in, (CFG, 'psf_fraction', 'psf_energy'), {}),
@@ -196,457 +264,411 @@ def set_gal_nh():
            targets=[(vars_in, (SRC, 'src_rad', 'excl_rad'), {})],
            env=ciaoenv)
 def get_apphot_ecf_rad():
-    for par, psffrac in (('src_rad', Cfg['psf_fraction'].val),
+    for par, psffrac in (('src_rad', Cfg.psf_fraction),
                          ('excl_rad', 0.90)):
-        rad = Chandra.ECF.interp_ECF(ecf=psffrac, energy=Cfg['psf_energy'].val,
-                                     theta=Src['theta'].val, phi=Src['phi'].val,
+        rad = Chandra.ECF.interp_ECF(ecf=psffrac, energy=Cfg.psf_energy,
+                                     theta=Src.theta, phi=Src.phi,
                                      shape='circular', value='radius')
-        Src[par] = rad / 0.492            # Convert arcsec to ACIS pixels
+        # Convert from arcsec to pixels and require that radius >= Cfg.min_src_rad 
+        Src[par] = max(rad / 0.492, Cfg.min_src_rad)
         Log.verbose("Extraction radius (%.0f%%) is %.2f pixels for (theta,phi)=(%.2f',%.1f deg)" %
-                    (psffrac * 100, Src[par].val, Src['theta'].val, Src['phi'].val))
+                    (psffrac * 100, Src[par], Src.theta, Src.phi))
 
 ###################################################################################
 @Task.task(depends=[(vars_in, (CFG, 'min_src_rad', 'bkg_ann_mul0', 'bkg_ann_mul1'), {}),
                     (vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {}),
-                    FILE['ccd_evt.fits'],
-                    FILE['obs_asol.lis'],
                     ],
-           targets=[FILE['src'],
-                    FILE['bkg'],
-                    FILE['cut'],
+           targets=[FILE['src.reg'],
+                    FILE['bkg.reg'],
+                    FILE['cut.reg'],
+                    (vars_in, (SRC, 'ann_r0', 'ann_r1'), {}),
                     ],
            env=ciaoenv,
            )
-def make_apphot_reg_files(excl_srcs):
-    """
-    Make CIAO region files for aperture photometry
+def make_apphot_reg_files(excl_srcs=None):
+    """Make CIAO region files for aperture photometry
 
-    :param src_file: source region file
-    :param bkg_file: background region file
-    :param cut_file: cutout region file
     :param excl_srcs: recarray of detected sources that should be removed from regions
-
     :returns: None
     """
-    # Set some vars for notational convenience
-    min_rad = Cfg['min_src_rad'].val
-    src_rad = Src['src_rad'].val
-    excl_rad = Src['excl_rad'].val
-    src_x = Src['x'].val
-    src_y = Src['y'].val
-    src_file = File['src'].rel
-    bkg_file = File['bkg'].rel
-    cut_file = File['cut'].rel
-    src_ccd_id = Src['ccd_id'].val
-
-    # Force minimum source extraction radius
-    src_rad = max(src_rad, min_rad)
-    excl_rad = max(excl_rad, min_rad)
-
+    src_rad = Src.src_rad
+    excl_rad = Src.excl_rad
     Log.debug('Src, excl ECF radius is %.2f, %.2f' % (src_rad, excl_rad))
 
     # Background annulus radii
-    Src['ann_r0'] = excl_rad * Cfg['bkg_ann_mul0'].val
-    Src['ann_r1'] = excl_rad * Cfg['bkg_ann_mul1'].val
+    Src.ann_r0 = excl_rad * Cfg.bkg_ann_mul0
+    Src.ann_r1 = excl_rad * Cfg.bkg_ann_mul1
 
     # Stupidly slow but use this for now until a persistent dmcoords interface is written
     sky_coords = []
     for chipx, chipy in [(8,8), (8,1016), (1016,1016), (1016,8)]:
-        Log.debug("Running dmcoords for chip = (acis-%d, %d, %d)" %
-                  (src_ccd_id, chipx, chipy))
-        coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'].rel,
-                                   asolfile='@' + File['obs_asol.lis'].rel,
-                                   pos=[src_ccd_id, chipx, chipy], coordsys='chip')
+        Log.verbose("Running dmcoords for chip = (acis-%d, %d, %d)" %
+                  (Src.ccdid, chipx, chipy))
+        coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'],
+                                   asolfile='@' + File['obs_asol.lis'],
+                                   pos=[Src.ccdid, chipx, chipy], coordsys='chip')
         sky_coords.extend([coords['x'], coords['y']])
 
     chip_reg = "polygon(%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f)" % tuple(sky_coords)
     Log.debug('Determined chip region %s' % chip_reg)
 
-    if not os.path.exists(src_file):
-	Log.info("Creating src.reg for source")
-	regfile = open(src_file, 'w')
-	region = "circle(%.2f,%.2f,%.2f)" % (src_X, src_Y, src_rad)
-	region += "# Region file format: CIAO version 1.0\n";
-	region += "chip_reg*src_reg"
+    # Distance from source to excl_srcs in pixels.
+    if excl_srcs is not None:
+        dists = Ska.astro.sph_dist(Src.ra, Src.dec, excl_srcs.ra, excl_srcs.dec) * 3600 / 0.492
 
-        ok = Ska.astro.sph_dist(Src['ra'].)
-        # Create exclusion regions for each source within the source circle
-        for excl_src in excl_srcs:
-            # Only worry about other sources in the same obsid
-            if excl_src.obsid == Src['obsid'].val:
-                pass
-            
-            # Took out this exclusion.  Discussion with PJG 2008-Sep-15.
-            # && excl->{ccdid} == Src['ccdid});
+    def make_reg_file(filename, region_str, r0=None, r1=None, excl_srcs=None):
+        if os.path.exists(filename):
+            return
+        Log.verbose("Creating region file %s" % filename)
+        region = "# Region file format: CIAO version 1.0\n";
+        region += "%s*%s" % (chip_reg, region_str)
 
-            # If we don't have a sky(x,y) for the source already then get it with dmcoords.
-            unless (defined excl->{X} and defined excl->{Y}) {
-                print "Calculating X,Y for excl->{ra} excl->{dec}\n";
-                out = self->DMcoord_coords( cel => (excl->{ra}, excl->{dec} ) );
-                excl->{X} = out[0]->{sky}->{'x'};
-                excl->{Y} = out[0]->{sky}->{'y'};
-            }
+        if excl_srcs is not None:
+            # Exclude sources from the excl_srcs list which are not consistent with
+            # Src position (first test) and are touching Src region (second test)
+            bad = (dists > r0) & (dists < r1)
 
-            # Don't exclude the source itself
-            next if ((src_X - excl->{X})**2 + (src_Y - excl->{Y})**2 < (1+src_rad/2)**2);
+            # Create exclusion regions for each source within the source circle
+            for excl_src in excl_srcs[bad]:
+                try:
+                    coords = dict(x = excl_src['x'], y = excl_src['y'])
+                except IndexError:      # numpy throws IndexError not KeyError in this case
+                    Log.verbose("Calculating sky x,y for excluded source at RA, dec = %.4f, %.4f" %
+                             (excl_src['ra'], excl_src['dec']))
+                    coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'],
+                                               asolfile='@' + File['obs_asol.lis'],
+                                               pos=[excl_src['ra'], excl_src['dec']], coordsys='cel')
+                region += "-circle(%.2f,%.2f,%.2f)" % (coords['x'], coords['y'], excl_rad)
 
-            # If it overlaps with outer radius of the annulus then print exclusion region
-            if ((src_X - excl->{X})**2 + (src_Y - excl->{Y})**2 < (src_rad + excl_rad)**2) {
-                exc_reg = sprintf "circle(%.2f,%.2f,%.2f)", excl->{X}, excl->{Y}, excl_rad;
-                print SRC "-exc_reg";
-            }
-	}
-        print SRC "\n";
-	close SRC;
-    }
+        Log.debug("region=\n%s" % region)
+        open(filename, 'w').write(region + "\n")
 
-##     unless (-r bkg_file) {
-## 	open BKG, "> bkg_file" or do {
-## 	    message(1, "ERROR - could not open bkg region bkg_file\n");
-## 	    return;
-## 	};
+    make_reg_file(File['src.reg'],
+                  "circle(%.2f,%.2f,%.2f)" % (Src.x, Src.y, src_rad),
+                  1+src_rad/2, src_rad+excl_rad, excl_srcs)
+    make_reg_file(File['bkg.reg'],
+                  "annulus(%.2f,%.2f,%.2f,%.2f)" % (Src.x, Src.y, Src.ann_r0, Src.ann_r1),
+                  Src.ann_r0-excl_rad, Src.ann_r1+excl_rad, excl_srcs)
+    make_reg_file(File['cut.reg'],
+                  "rotbox(%.2f,%.2f,%.2f,%.2f,0)" % (Src.x, Src.y, 2*Src.ann_r1, 2*Src.ann_r1))
 
-## 	print BKG "# Region file format: CIAO version 1.0\n";
-## 	printf BKG ("chip_reg * annulus(%.2f,%.2f,%.2f,%.2f)",
-## 		    src_X, src_Y, Src['ann_r0}, Src['ann_r1});
+#####################################################################################
+@Task.task(depends=[FILE['src.reg'],
+                    FILE['bkg.reg']],
+           targets=[FILE['ds9.reg']])
+def make_ds9_reg_files():
+    src_lines = open(File['src.reg']).readlines()
+    bkg_lines = [x for x in open(File['bkg.reg']).readlines() if not x.startswith('#')]
+    ds9 = open(File['ds9.reg'], 'w')
+    for line in src_lines + bkg_lines:
+        line = re.sub(r'\*', '\n', line)
+        line = re.sub(r'-', '\n-', line)
+        ds9.write(line)
+    ds9.close()
+    Log.verbose('Made ds9 region file %s' % File['ds9.reg'])
 
-##         # Create exclusion regions for each source within the background annulus
-## 	foreach excl (apphot_src_list) {
-##             # Don't exclude the source itself
-##             # next if excl->{id} == Src['id};
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['src.reg'],
+                    FILE['bkg.reg'],
+                    FILE['evt.fits'],
+                    FILE['expmap.fits']],
+           targets=[FILE['apphot.fits.gz'],
+                    FILE['apphot_exp.fits.gz']],
+           env=ciaoenv)
+def calc_aperture_photom():
+    bash('punlearn dmextract')
+    bash("""dmextract
+            infile='{{file.evt.fits}}[bin sky=@{{file.src.reg}}]'
+            outfile='{{file.apphot.fits}}'
+            bkg='{{file.evt.fits}}[bin sky=@{{file.bkg.reg}}]'
+            error=gehrels
+            bkgerror=gehrels
+            opt=generic
+            clobber=yes""")
+    bash("""dmextract
+            infile='{{file.expmap.fits}}[bin sky=@{{file.src.reg}}]'
+            outfile={{file.apphot_exp.fits}}
+            bkg='{{file.expmap.fits}}[bin sky=@{{file.bkg.reg}}]'
+            error=gaussian
+            bkgerror=gaussian
+            opt=generic
+            clobber=yes""")
+    bash("gzip -f {{file.apphot.fits}} {{file.apphot_exp.fits}}")
 
-##             # Only worry about other sources in the same obsid and ccd
-##             next unless (excl->{obsid} == Src['obsid}
-##                          && excl->{ccdid} == Src['ccdid});
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['evt.fits']],
+           targets=[FILE['cut_evt.fits']],
+           env=ciaoenv)
+def make_cut_evt():
+    bash("""dmcopy
+            infile='{{file.evt.fits}}[sky=region({{file.cut.reg}})][{{cfg.energy_filter}}]'
+            outfile='{{file.cut_evt.fits}}'
+            clobber=yes""")
 
-##             # If we don't have a sky(x,y) for the source already then get it with dmcoords.
-##             unless (defined excl->{X} and defined excl->{Y}) {
-##                 out = self->DMcoord_coords( cel => (excl->{ra}, excl->{dec} ) );
-##                 excl->{X} = out[0]->{sky}->{'x'};
-##                 excl->{Y} = out[0]->{sky}->{'y'};
-##             }
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['src.reg'],
+                    FILE['bkg.reg']],
+           targets=[FILE['src_img.reg']],
+           env=ciaoenv)
+def make_src_img_reg():
+    src_reg = open(File['src.reg']).read()
+    bkg_reg = open(File['bkg.reg']).read()
+    open(File['src_img.reg'], 'w').write(src_reg + bkg_reg)
+    Log.verbose('Created src_img_reg file %s' % File['src_img.reg'])
 
-##             # Don't exclude the source itself
-##             next if ((src_X - excl->{X})**2 + (src_Y - excl->{Y})**2 < (1+src_rad/2)**2);
+#####################################################################################
+def _make_cut_img(infile, filetype, outfits, outjpg, regfile):
+    """Make cutout images (FITS and jpg).  This gets used by subsequent tasks."""
+    VAL.update(dict(x0 = "%.1f" % (Src.x - Src.ann_r1),
+                    x1 = "%.1f" % (Src.x + Src.ann_r1),
+                    y0 = "%.1f" % (Src.y - Src.ann_r1),
+                    y1 = "%.1f" % (Src.y + Src.ann_r1),
+                    bin_evt = "%.6f" % (Src.ann_r1 * 2 / Cfg.sizefits),
+                    bin_img = "%f" % (Src.ann_r1 * 2 / Cfg.sizefits),
+                    bin_jpg = "%.6f" % (Src.ann_r1 * 2 / Cfg.sizejpg),
+                    infile = infile,
+                    outfits = outfits,
+                    outjpg = outjpg,
+                    regfile = regfile
+                    ))
 
-##             # If it overlaps with outer radius of the annulus then print exclusion region
-##             if ((src_X - excl->{X})**2 + (src_Y - excl->{Y})**2 
-##                 < (Src['ann_r1} + excl_rad)**2) {
-##                 bkg_reg = sprintf "circle(%.2f,%.2f,%.2f)", excl->{X}, excl->{Y}, excl_rad;
-##                 print BKG "-bkg_reg";
-##             }
-## 	}
-##         print BKG "\n";
-## 	close BKG;
-##     }
+    # Make output FITS image covering the size on the sky (x0:x1,y0:y1) with sizefits**2 pixels
+    if filetype == 'event':
+        bash("""dmcopy
+             infile='{{val.infile}}[bin x={{val.x0}}:{{val.x1}}:#{{cfg.sizefits}},y={{val.y0}}:{{val.y1}}:#{{cfg.sizefits}}]'
+             outfile='{{val.outfits}}'
+             clobber=yes verbose=0""")
+        Val['tmp_infile'] = outfits
 
-##     unless (-r cut_file) {
-## 	open CUT, "> cut_file" or do {
-## 	    message(1, "ERROR - could not open cut region cut_file\n");
-## 	    return;
-## 	};
-##         box_r1 = Src['ann_r1};
+    else:
+        bash("""dmregrid
+             infile={{val.infile}}
+             outfile={{val.outfits}}
+             bin='{{val.x0}}:{{val.x1}}:{{val.bin_img}},{{val.y0}}:{{val.y1}}:{{val.bin_img}}'
+             coord_sys=physical
+             rotangle=0 rotxcenter=0 rotycenter=0
+             xoffset=0 yoffset=0
+             npts=0
+             clobber=yes verbose=0""")
+        Val['tmp_infile'] = infile
 
-## 	print CUT "# Region file format: CIAO version 1.0\n";
-## 	printf CUT ("rotbox(%.2f,%.2f,%.2f,%.2f,0)\n",
-## 		    src_X, src_Y, box_r1 * 2.0, box_r1 * 2.0);
-## 	close CUT;
-##     }
+    # Make temporary FITS image covering size on sky with sizejpg**2 pixels
+    bash("""dmregrid
+         infile='{{val.tmp_infile}}'
+         outfile='{{val.outfits}}.tmp'
+         bin='{{val.x0}}:{{val.x1}}:{{val.bin_jpg}},{{val.y0}}:{{val.y1}}:{{val.bin_jpg}}'
+         coord_sys=physical
+         rotangle=0 rotxcenter=0 rotycenter=0
+         xoffset=0 yoffset=0
+         npts=0
+         clobber=yes verbose=0""")
 
-##     1;
-## }
+    # Convert to jpeg
+    bash("""dmimg2jpg
+         infile='{{val.outfits}}.tmp'
+         outfile={{val.outjpg}}
+         regionfile='region({{val.regfile}})'
+         greenfile=none bluefile=none
+         showaimpoint=no showgrid=no
+         scalefunction=lin
+         invert=yes
+         clobber=yes""")
+
+    os.unlink(Val['outfits'] + '.tmp')
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['cut_evt.fits'],
+                    FILE['src_img.reg']],
+           targets=[FILE['src_img.fits'],
+                    FILE['src_img.jpg']],
+           env=ciaoenv)
+def make_src_img():
+    _make_cut_img(File['cut_evt.fits'], 'event', File['src_img.fits'],
+                  File['src_img.jpg'], File['src_img.reg'])
+    Log.verbose('Made src_img file %s' % File['src_img.jpg'])
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['expmap.fits'],
+                    FILE['src_img.reg']],
+           targets=[FILE['expmap_cut.fits'],
+                    FILE['expmap_cut.jpg']],
+           env=ciaoenv)
+def make_expmap_cut_img():
+    _make_cut_img(File['expmap.fits'], 'image', File['expmap_cut.fits'],
+                  File['expmap_cut.jpg'], File['src_img.reg'])
+    Log.verbose('Made expmap_cut_img file %s' % File['expmap_cut.jpg'])
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['bkg.reg']],
+           targets=[FILE['fill.reg']])
+def make_fill_reg():
+    bkg = open(File['bkg.reg']).read()
+    fill = open(File['fill.reg'], 'w')
+
+    # Include each excluded circular region from background file to be filled
+    re_xsrc = re.compile(r'- \s* ( circle\( [^)]+ \) )', re.VERBOSE)
+    for xsrc in re_xsrc.finditer(bkg):
+        print >>fill, xsrc.group(1)
+
+    # Fill any region outside the polygon region which defines the chip area
+    re_poly = re.compile(r'polygon \( [^)]+ \)', re.VERBOSE)
+    try:
+        poly = re_poly.search(bkg).group()
+    except AttributeError:
+        Log.error('Could not find polygon in region file')
+        sys.exit(1)
+    print >>fill, '!%s' % poly
+    fill.close()
+    Log.verbose('Made fill.reg file %s' % File['fill.reg'])
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['bkg.reg'],
+                    FILE['fill.reg'],
+                    FILE['src_img.fits']],
+           targets=[FILE['fill_img.fits']],
+           env=ciaoenv)
+def make_fill_img():
+    bash("punlearn dmfilth")
+    bash("""dmfilth
+         infile={{file.src_img.fits}}
+         outfile={{file.fill_img.fits}}
+         method=DIST
+         srclist=@{{file.fill.reg}}
+         bkglist=@{{file.bkg.reg}}
+         clobber=yes""")
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['cut.reg'],
+                    FILE['bkg.reg'],
+                    FILE['fill.reg'],
+                    FILE['src_img.reg'],
+                    FILE['expmap.fits']],
+           targets=[FILE['expmap_fill.fits']],
+           env=ciaoenv)
+def make_expmap_fill():
+    tmp1 = tempfile.NamedTemporaryFile()
+    tmp2 = tempfile.NamedTemporaryFile()
+    bash("""dmcopy
+         infile='{{file.expmap.fits}}[sky=region({{file.cut.reg}})]'
+         outfile=%s
+         clobber=yes""" % tmp1.name)
+    bash("punlearn dmfilth")
+    bash("""dmfilth
+         infile=%s
+         outfile=%s
+         method=DIST
+         srclist=@{{file.fill.reg}}
+         bkglist=@{{file.bkg.reg}}
+         clobber=yes""" % (tmp1.name, tmp2.name))
+    _make_cut_img(tmp2.name, 'image', File['expmap_fill.fits'],
+                  File['expmap_fill.jpg'], File['src_img.reg'])
+    Log.verbose('Made expmap_fill_img file %s' % File['expmap_fill.jpg'])
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['apphot.fits.gz'],
+                    FILE['apphot_exp.fits.gz']],
+           # targets=[FILE['apphot.pickle'],
+           #         FILE['apphot_exp.pickle'],
+           #         (vars_in, (SRC, 'src_area'), {})]
+           )
+def write_apphot_pickle():
+    for name in ('apphot', 'apphot_exp'):
+        rows = Ska.Table.read_table(name + '.fits.gz')
+        pickle.dump(rows, open(name + '.pickle', 'w'))
+        Src.src_area = rows[0]['AREA']
+        Log.verbose('Wrote %s.pickle' % name)
+
+#####################################################################################
+@Task.task(depends=[(vars_in, (SRC, 'src_area'), {})],
+           targets=[(vars_in, (SRC, 'src_area_ratio'), {})])
+def set_src_area_ratio():
+    nom_area = math.pi * Src.src_rad**2
+    Src.src_area_ratio = Src.src_area / nom_area
+    Log.verbose("Set Src.src_area_ratio = %.3f" % Src.src_area_ratio)
+
+#####################################################################################
+@Task.task(dir=FILE['src_dir'],
+           depends=[FILE['src_img.jpg'],
+                    FILE['expmap_cut.jpg'],
+                    FILE['index_template.html']],
+           targets=[FILE['index.html']],
+           always=True)
+def make_index_html():
+    index_html = render(open(File['index_template.html']).read())
+    open(File['index.html'], 'w').write(index_html)
+    Log.verbose('Created report page %s' % File['index.hmtl'])
 
 #####################################################################################
 # Main processing loop
 #####################################################################################
 
 srcs = Ska.Table.read_table(objlist)
-for srcrow in srcs[:1]:
-    for key in Src.keys():
-        del Src[key]
+excl_srcs = Ska.Table.read_table(excllist)
+
+for src in Ska.Numpy.filter(srcs, opt.filters):
+    # Clear the SRC contextdict and then populate from objlist table rows
+    SRC.clear()
     for col in srcs.dtype.names:
-        Src[col] = srcrow[col].tolist()
-    Src['xdat_id'] = render('{{src.ra}}_{{src.dec}}')
+        try:
+            Src[col] = src[col].tolist()
+        except AttributeError:
+            Src[col] = src[col]
+    pos = Ska.astro.Equatorial(Src.ra, Src.dec)
+    pos.delim = ''
+    Src.xdat_id = re.sub(r'\..*', '', pos.ra_hms) + re.sub(r'\..*', '', pos.dec_dms) 
+    Src.xdat_id = "%.4f_%.4f" % (Src.ra, Src.dec)
 
-    Task.start(message='Processing for %s' % Src['xdat_id'])
+    if os.path.exists(File['info.pickle']):
+        continue
 
-    restore_src(File['info.pickle'].rel)
+    Task.start(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
 
+    restore_src(File['info.pickle'])
+
+    # Make initial directories
     make_xdat_and_src_dirs()
+
+    # Copy/link various data files
     make_xdat_to_src_link()
-    get_evt_expmap_files()
+    copy_resources()
+    get_ccd_evt_fits()
+    get_ccd_expmap_fits()
+    get_evt_fits()
+    get_expmap_fits()
     get_obs_asol_files()
+
+    # Gather some numbers
     set_coords()
     set_gal_nh()
     get_apphot_ecf_rad()
-    make_apphot_reg_files([])
 
-    store_src(File['info.pickle'].rel)
+    # Extraction processing
+    make_apphot_reg_files(excl_srcs)
+    make_ds9_reg_files()
+    calc_aperture_photom()
+    make_cut_evt()
+    make_src_img_reg()
+    make_src_img()
+    make_expmap_cut_img()
+    make_fill_reg()
+    make_fill_img()
+    make_expmap_fill()
+    write_apphot_pickle()
+    set_src_area_ratio()
+
+    # Source report page
+    make_index_html()
     
-    Task.end(message='Processing for %s' % Src['xdat_id'])
-
-# hard  uses Chandra.ECF
-## <process_step>
-##   name         make_apphot_reg_files
-##   dir          %FILE{src_dir}%
-##   target_file  %FILE{src_reg}%
-##   target_file  %FILE{bkg_reg}%
-##   target_file  %FILE{cut}%
-##   loop         band = broad
-##   loop         ecf = 90
-##   method       make_apphot_reg_files
-## </process_step>
-
-# easy
-## <process_step>
-##   name         make_ds9_reg_files
-##   dir          %FILE{src_dir}%
-##   depend_file  %FILE{src_reg}%
-##   depend_file  %FILE{bkg_reg}%
-##   target_file  %FILE{ds9_reg}%
-##   loop         band = broad
-##   loop         ecf = 90
-##   command      <<COMMAND
-##    cat %FILE{src_reg}% %FILE{bkg_reg}%
-##    | sed 
-##       -e 's/ \* /\n/g'
-##       -e 's/ - /\n-/g'
-##    > %FILE{ds9_reg}%
-## COMMAND
-## </process_step>
-
-# easy
-## <process_step>
-##   name         calc_aperture_photom
-##   dir          %FILE{src_dir}%
-##   depend_file  %FILE{src_reg}%
-##   depend_file  %FILE{bkg_reg}%
-##   depend_file  %FILE{evt}%
-##   depend_file  %FILE{expmap}%
-##   target_file  %FILE{apphot.fits.gz}%
-##   target_file  %FILE{apphot_exp.fits.gz}%
-##   loop         band = broad
-##   loop         ecf = 90
-##   command      punlearn dmextract
-##   command      <<COMMAND
-##    dmextract
-##     infile='%FILE{evt}%[bin sky=@%FILE{src_reg}%]'
-##     outfile=%FILE{apphot.fits}%
-##     bkg='%FILE{evt}%[bin sky=@%FILE{bkg_reg}%]'
-##     error=gehrels
-##     bkgerror=gehrels
-##     opt=generic
-##     clobber=yes
-## COMMAND
-##   command      <<COMMAND
-##    dmextract
-##     infile='%FILE{expmap}%[bin sky=@%FILE{src_reg}%]'
-##     outfile=%FILE{apphot_exp.fits}%
-##     bkg='%FILE{expmap}%[bin sky=@%FILE{bkg_reg}%]'
-##     error=gaussian
-##     bkgerror=gaussian
-##     opt=generic
-##     clobber=yes
-## COMMAND
-##   command gzip -f %FILE{apphot.fits}% %FILE{apphot_exp.fits}%
-## </process_step>
-
-# easy
-## #######################################################################
-## ## Make cutout event file
-## #######################################################################
-## <process_step>
-##    name        make_cut_evt
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{evt}%
-##    target_file %FILE{cut_evt}%
-##    loop        band = broad
-##    command     <<COMMAND
-##     dmcopy
-##      infile='%FILE{evt}%[sky=region(%FILE{cut}%)][%VALUE{energy_filter_%VALUE{band}%}%]'
-##      outfile='%FILE{cut_evt}%'
-##      clobber= yes 
-## COMMAND
-## </process_step>
-
-# easy (or medium with modularization of make_cutout.py)
-## ######################################################################
-## # Make src cutout images
-## ######################################################################
-## <process_step>
-##    name        make_src_images
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{cut_evt}%
-##    depend_file %FILE{src}%
-##    depend_file %FILE{bkg}%
-##    target_file %FILE{source_image.fits}%
-##    target_file %FILE{source_image.jpg}%
-##    target_file %FILE{source_image.reg}%
-##    loop        band = broad
-##    command     cat %FILE{src}% %FILE{bkg}% > %FILE{source_image.reg}%
-##    command     <<COMMAND
-##     /home/aldcroft/arch/x86_64-linux_RHFC-8/bin/python /data/baffin/tom/Science/Champ/Stacking/inhxs/scripts/make_cutout.py
-##      --infile   '%FILE{cut_evt}%'
-##      --outfits   '%FILE{source_image.fits}%'
-##      --outjpg    '%FILE{source_image.jpg}%'
-##      --x         %VALUE{X}%
-##      --y         %VALUE{Y}%
-##      --sizesky   %VALUE{ann_r1}%
-##      --sizefits  80
-##      --sizejpg   300
-##      --regionfile '%FILE{source_image.reg}%'
-## COMMAND
-## </process_step>
-
-# easy once above is done
-## ######################################################################
-## # Make expmap cutout images
-## ######################################################################
-## <process_step>
-##    name        make_expmap_images
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{expmap}%
-##    depend_file %FILE{source_image.reg}%
-##    target_file %FILE{expmap_cut.fits}%
-##    target_file %FILE{expmap_cut.jpg}%
-##    loop        band = broad
-##    command     <<COMMAND
-##     /home/aldcroft/arch/x86_64-linux_RHFC-8/bin/python /data/baffin/tom/Science/Champ/Stacking/inhxs/scripts/make_cutout.py
-##      --infile   '%FILE{expmap}%'
-##      --intype   image
-##      --outfits   '%FILE{expmap_cut.fits}%'
-##      --outjpg    '%FILE{expmap_cut.jpg}%'
-##      --x         %VALUE{X}%
-##      --y         %VALUE{Y}%
-##      --sizesky   %VALUE{ann_r1}%
-##      --sizefits  80
-##      --sizejpg   300
-##      --regionfile '%FILE{source_image.reg}%'
-##    command     dmlist %FILE{expmap_cut.fits}% blocks
-## COMMAND
-## </process_step>
-
-# easy or medium
-## ######################################################################
-## # Make fill region file (for filling over known x-ray sources)
-## ######################################################################
-## <process_step>
-##    name        make_fill_region
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{bkg_reg}%
-##    target_file %FILE{fill_reg}%
-##    command     <<COMMAND
-##     %FILEABS{analysis_dir}%/scripts/make_fill_reg.py
-##      --infile    '%FILE{bkg_reg}%'
-##      --outfile   '%FILE{fill_reg}%'
-## COMMAND
-## </process_step>
-
-# easy
-## ######################################################################
-## # Make filled image
-## ######################################################################
-## <process_step>
-##    name        make_filled_image
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{bkg_reg}%
-##    depend_file %FILE{fill_reg}%
-##    depend_file %FILE{source_image.fits}%
-##    target_file %FILE{filled_image.fits}%
-##    loop        band = broad
-##    command     punlearn dmfilth
-##    command     <<COMMAND
-##     dmfilth
-##       infile=%FILE{source_image.fits}%
-##       outfile=%FILE{filled_image.fits}%
-##       method=DIST
-##       srclist=@%FILE{fill_reg}%
-##       bkglist=@%FILE{bkg_reg}%
-##       clobber=yes
-## COMMAND
-## </process_step>
-
-
-# easy
-## ######################################################################
-## # Make filled exposure map
-## ######################################################################
-## <process_step>
-##    name        make_filled_expmap
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{cut}%
-##    depend_file %FILE{bkg_reg}%
-##    depend_file %FILE{fill_reg}%
-##    depend_file %FILE{expmap}%
-##    target_file %FILE{expmap_filled.fits}%
-##    loop        band = broad
-##    command     punlearn dmfilth
-##    command     <<COMMAND
-##     dmcopy
-##       infile='%FILE{expmap}%[sky=region(%FILE{cut}%)]'
-##       outfile='%FILE{expmap_cut.fits}%tmp2'
-##       clobber=yes
-## COMMAND
-##    command     <<COMMAND
-##     dmfilth
-##       infile=%FILE{expmap_cut.fits}%tmp2
-##       outfile=%FILE{expmap_filled.fits}%tmp2
-##       method=DIST
-##       srclist=@%FILE{fill_reg}%
-##       bkglist=@%FILE{bkg_reg}%
-##       clobber=yes
-## COMMAND
-##    command     <<COMMAND
-##     /home/aldcroft/arch/x86_64-linux_RHFC-8/bin/python %FILEABS{analysis_dir}%/scripts/make_cutout.py
-##      --infile   %FILE{expmap_filled.fits}%tmp2
-##      --intype   image
-##      --outfits   %FILE{expmap_filled.fits}%
-##      --outjpg    %FILE{expmap_filled.jpg}%
-##      --x         %VALUE{X}%
-##      --y         %VALUE{Y}%
-##      --sizesky   %VALUE{ann_r1}%
-##      --sizefits  80
-##      --sizejpg   300
-##      --regionfile '%FILE{source_image.reg}%'
-## COMMAND
-##     command rm %FILE{expmap_filled.fits}%tmp2 %FILE{expmap_cut.fits}%tmp2
-## </process_step>
-
-# hard??
-## ######################################################################
-## # Make filled exposure map
-## ######################################################################
-## <process_step>
-##    name        write_apphot_dat_and_check_src_reg
-##    dir         %FILE{src_dir}%
-##    depend_file %FILE{apphot.fits.gz}%
-##    depend_file %FILE{apphot_exp.fits.gz}%
-##    target_file %FILE{apphot.dat}%
-##    target_file %FILE{apphot_exp.dat}%
-##    method      write_apphot_dat_and_check_src_reg
-## </process_step>
-
-# hard
-## <process_step>
-##   name         make_html_report     
-##   dir           %FILE{obs_dir}%
-##   always_run   1
-##   depend_file   %FILE{source_image.jpg}%
-##   depend_file   %FILE{report_template.html}%
-##   target_file   %FILE{report.html}%
-##   delete_file   %FILE{report.html}%
-##   method       make_html_report     
-## </process_step>
-
-## <process_step>
-##   name         store_source_information
-##   always_run   1
-##   method       store_object         
-## </process_step>
-
-## <process_step>
-##   name         store_info_yaml
-##   always_run   1
-##   method       store_info_yaml
-## </process_step>
+    store_src(File['info.pickle'])
+    
+    Task.end(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
 

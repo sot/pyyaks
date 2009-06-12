@@ -4,6 +4,7 @@ import contextlib
 
 import os
 import re
+import time
 from stat import ST_MTIME # Really constants 7 and 8
 from traceback import format_exc
 import ContextValue
@@ -130,7 +131,7 @@ def check_depend(depends=None, targets=None):
     # Lists of mod time for depend and target files.  Seed the list with a
     # fake very OLD and NEW file (respectively) so the final min/max comparison
     # always works.
-    mtime = dict(depends = [-1e38], targets = [1e38])
+    mtime = dict(depends = [1], targets = [2**31])
     deptypes = dict(depends=depends, targets=targets)
 
     for deptype, deps in deptypes.items():
@@ -144,6 +145,7 @@ def check_depend(depends=None, targets=None):
             except (TypeError, ValueError):
                 filename = ContextValue.render(dep)
                 if os.path.exists(filename):
+                    Log.debug('%s mtime is %s' % (filename, time.ctime(os.stat(filename)[ST_MTIME])))
                     mtime[deptype].append(os.stat(filename)[ST_MTIME])
                     Log.debug('File %s exists' %  filename)
                 else:
@@ -152,20 +154,23 @@ def check_depend(depends=None, targets=None):
                         raise DependFileMissing, 'Depend file %s not found' % filename
                     else:
                         return False
-                continue
-
-            if func(*args, **kwargs):
-                Log.debug('Func %s succeeded' % func.func_name)
             else:
-                Log.debug('Func %s failed' % func.func_name)
-                if deptype == 'depends':
-                    raise DependFuncFailure, 'Depend function %s false' % func.func_name
+                if func(*args, **kwargs):
+                    Log.debug('Func %s succeeded' % func.func_name)
                 else:
-                    return False                
+                    Log.debug('Func %s failed' % func.func_name)
+                    if deptype == 'depends':
+                        raise DependFuncFailure, 'Depend function %s false' % func.func_name
+                    else:
+                        return False                
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
     # created within the same second (particularly for "touch" files).
-    return min(mtime['targets']) >= max(mtime['depends'])
+    min_targets = min(mtime['targets'])
+    max_depends = max(mtime['depends'])
+    Log.debug('min targets time=%s   max depeends time=%s'
+              % (time.ctime(min_targets), time.ctime(max_depends)))
+    return min_targets >= max_depends
 
 def task(depends=None, targets=None, env=None, always=None, dir=None):
     """Function decorator to support definition of a processing task.
@@ -185,9 +190,9 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
                 return
 
             Log.verbose('')
-            Log.verbose('-' * 40)
-            Log.info(' Running task: %s' % func.func_name)
-            Log.verbose('-' * 40)
+            Log.verbose('-' * 60)
+            Log.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
+            Log.verbose('-' * 60)
             origdir = os.getcwd()
             origenv = os.environ.copy()
 
@@ -197,27 +202,31 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
                 if dir:
                     try:
                         newdir = ContextValue.render(dir)
-                        Log.debug('Changing to directory "%s"' % newdir)
                         os.chdir(newdir)
+                        Log.verbose('Changed to directory "%s"' % newdir)
                     except OSError, msg:
                         raise TaskFailure, msg
 
                 if env:
                     # Set local environment
+                    Log.verbose('Updating local environment')
                     os.environ.update(env)
 
                 # Check dependencies before execution.  If met then abort task with success.
                 # The order is important: check_depend can raise an exception if any depends files
                 # are missing.  But after that if there are no 
                 if check_depend(depends, targets) and targets:
+                    Log.verbose('Skipping because dependencies met')
                     raise TaskSuccess
 
                 # Actually run the function.  Catch any exceptions and re-raise as TaskFailure.
                 # This ignores function return val, but task processing should not depend on
                 # return vals anyway since there is no guarantee that func will get run anyway.
                 try:
-                    Log.debug('Running func %s' % func)
+                    Log.debug('Running function %s' % func.func_name)
                     func(*args, **kwargs)
+                except KeyboardInterrupt:
+                    raise
                 except:
                     # Change limit based on verbosity [to do]
                     raise TaskFailure, format_exc(limit=2)
@@ -236,11 +245,13 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
                 for envvar in env:
                     del os.environ[envvar]
                 os.environ.update(origenv)
+                Log.verbose('Restoring local environment')
                 
 
             # Go back to original directory
             if dir:
                 os.chdir(origdir)
+                Log.verbose('Restored directory to "%s"' % origdir)
 
             return
                 
@@ -261,15 +272,19 @@ def end(message=None):
     if message is not None:
         Log.info('')
         Log.info('*' * 60)
-        Log.info('** %-54s **' % (message + (status['fail'] and ' FAILED' or ' SUCCEEDED')))
+        Log.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
         Log.info('*' * 60)
         Log.info('')
     status['fail'] = False
         
 
-def bash(loglevel):
+def bash(loglevel, oneline=False):
     """Wrap Shell.bash function so input cmd is automatically rendered and
-    output gets Logged if loglevel <= VERBOSE."""
+    output gets Logged if loglevel <= VERBOSE.
+
+    :param loglevel: logging level
+    :param oneline: join multiline input into a one space-separated line
+    """
     class VerboseFileHandle:
         def __init__(self):
             pass
@@ -283,7 +298,8 @@ def bash(loglevel):
     def newbash(cmd, **kwargs):
         logfile = (loglevel <= Log.VERBOSE) and VerboseFileHandle() or None
         cmdlines = [x.strip() for x in cmd.splitlines()]
-        cmd = ContextValue.render(os.linesep.join(cmdlines))
+        sep = ' ' if oneline else os.linesep
+        cmd = ContextValue.render(sep.join(cmdlines))
         return Shell.bash(cmd, logfile=logfile, **kwargs)
     return newbash
 

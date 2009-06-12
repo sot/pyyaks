@@ -168,6 +168,9 @@ class ContextDict(dict):
         for key, val in vals:
             self[key] = val
 
+    def accessor(self):
+        return ContextDictAccessor(self)
+
     def __repr__(self):
         return str(dict((key, self[key].val) for key in self))
 
@@ -178,16 +181,16 @@ class ContextDictAccessor(object):
 
     Example::
 
-SrcDict = ContextDict('src')
-Src = ContextDictAccessor(SrcDict)
-SrcDict['test'] = 5.2
-Src.test
-Src.test = 8
-SrcDict['test'].val
-FileDict = ContextDict('file', basedir='/pool14', valuetype=ContextValue.File)
-File = ContextDictAccessor(FileDict)
-File.obs_dir = 'obs{{src.obsid}} /'
-File.obs_dir
+      SRC = ContextDict('src')
+      Src = Src.accessor()
+      SRC['test'] = 5.2
+      Src.test
+      Src.test = 8
+      SRC['test'].val
+      FileDict = ContextDict('file', basedir='/pool14', valuetype=ContextValue.File)
+      File = ContextDictAccessor(FileDict)
+      File.obs_dir = 'obs{{src.obsid}} /'
+      File.obs_dir
     """
     def __init__(self, contextdict):
         object.__setattr__(self, '_contextdict', contextdict)
@@ -206,4 +209,4 @@ File.obs_dir
     
     def __setitem__(self, name, value):
         self.__setattr__(name, value)
-    
+

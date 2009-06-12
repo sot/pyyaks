@@ -1,0 +1,32 @@
+body { font-family:sans-serif; color:#663399 }
+h1,h2,h3,h4 { color:#990000; }
+table { color:#660033; 
+  border-spacing:0;
+  border-width:0;
+  border-style:none;
+}
+img { padding:2; }
+td {  padding:1; }
+th {  padding:0;
+  color:#440022;
+}
+table.summary { 
+  border-spacing: 5px 0px;
+  border-width: 3px;
+  border-style: double;
+}
+table.style1 { 
+  border-spacing: 10px 0px;
+  border-width: 3px;
+  border-style: double;
+}
+table.uncertainty td { 
+  font-size:70%;
+  padding:0;
+}
+A:link {text-decoration: none}
+A:visited {text-decoration: none}
+A:active {text-decoration: none}
+A:hover {text-decoration: underline; color: red;}
+
+p.error { color: red; }
