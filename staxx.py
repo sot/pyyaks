@@ -151,37 +151,40 @@ def make_dir(dir_):
 #####################################################################################
 # Task definitions
 #####################################################################################
-@Task.task(targets=[FILE['src_dir'],
-                    FILE['ccd_dir']])
+@task()
+@depends(targets=[FILE['src_dir'],
+                  FILE['ccd_dir']])
 def make_xdat_and_src_dirs():
     make_dir(File['src_dir'])
     make_dir(File['ccd_dir'])
 
 ###################################################################################
-@Task.task(dir=FILE['ccd_dir'])
+@task()
+@chdir(FILE['ccd_dir'])
 def make_xdat_to_src_link():
     if not os.path.exists(File['ccd_src_dir']):
         os.symlink(File['src_dir'], File['ccd_src_dir'])
         Log.verbose('Made symlink %s -> %s' % (File['src_dir'], File['ccd_src_dir']))
 
 ###################################################################################
-@Task.task()
+@task()
 def restore_src(filename):
     Log.verbose('Restoring from %s' % filename)
     if os.path.exists(filename):
         SRC.update(pickle.load(open(filename, 'r')))
         
 ###################################################################################
-@Task.task()
+@task()
 def store_src(filename):
     Log.verbose('Storing to %s' % filename)
     pickle.dump(SRC, open(filename, 'w'))
 
 ###################################################################################
-@Task.task(depends=[os.path.join(prog_dir, 'pyaxx.css'),
-                    os.path.join(prog_dir, 'index_template.html')],
-           targets=(FILE['pyaxx.css'],
-                    FILE['index_template.html']))
+@task()
+@depends(depends=[os.path.join(prog_dir, 'pyaxx.css'),
+                  os.path.join(prog_dir, 'index_template.html')],
+         targets=[FILE['pyaxx.css'],
+                  FILE['index_template.html']])
 def copy_resources():
     make_dir(File['resources_dir'])
     for name in ('pyaxx.css', 'index_template.html'):
@@ -189,7 +192,8 @@ def copy_resources():
         shutil.copy(os.path.join(prog_dir, name), File[name])
 
 ###################################################################################
-@Task.task(targets=[FILE['ccd_evt.fits']])
+@task()
+@depends(targets=[FILE['ccd_evt.fits']])
 def get_ccd_evt_fits():
     f = get_globfiles(os.path.join(input_dir, evt2_glob))[0]
     make_local_copy(f, File['ccd_evt.fits'], linkabs=True)
@@ -197,28 +201,32 @@ def get_ccd_evt_fits():
 
 
 ###################################################################################
-@Task.task(targets=[FILE['ccd_expmap.fits']])
+@task()
+@depends(targets=[FILE['ccd_expmap.fits']])
 def get_ccd_expmap_fits():
     f = get_globfiles(os.path.join(input_dir, expmap_glob))[0]
     make_local_copy(f, File['ccd_expmap.fits'], linkabs=True)
     Log.verbose('Made local copy %s -> %s' % (render(f), File['ccd_expmap.fits']))
 
 ###################################################################################
-@Task.task(depends=[FILE['ccd_evt.fits']],
-           targets=[FILE['evt.fits']])
+@task()
+@depends(depends=[FILE['ccd_evt.fits']],
+         targets=[FILE['evt.fits']])
 def get_evt_fits():
     make_local_copy(File['ccd_evt.fits'], File['evt.fits'])
     Log.verbose('Made local copy %s -> %s' % (File['ccd_evt.fits'], File['evt.fits']))
 
 ###################################################################################
-@Task.task(depends=[FILE['ccd_expmap.fits']],
-           targets=[FILE['expmap.fits']])
+@task()
+@depends(depends=[FILE['ccd_expmap.fits']],
+         targets=[FILE['expmap.fits']])
 def get_expmap_fits():
     make_local_copy(File['ccd_expmap.fits'], File['expmap.fits'])
     Log.verbose('Made local copy %s -> %s' % (File['ccd_expmap.fits'], File['expmap.fits']))
 
 ###################################################################################
-@Task.task(targets=(FILE['obs_asol.lis'],))
+@task()
+@depends(targets=(FILE['obs_asol.lis'],))
 def get_obs_asol_files():
     files = get_globfiles(os.path.join(input_dir, asol_glob), maxfiles=None)
     obs_copies = [File['obs_asol'] + '_%d.fits' % i for i in range(len(files))]
@@ -231,11 +239,12 @@ def get_obs_asol_files():
     Log.verbose('Made %s' % File['obs_asol.lis'])
 
 ###################################################################################
-@Task.task(depends=[FILE['ccd_evt.fits'],
-                    FILE['obs_asol.lis'],
-                    (vars_in, (SRC, 'ra', 'dec'), {})],
-           targets=[(vars_in, (SRC, 'x', 'y', 'ccdid', 'theta', 'phi'), {})],
-           env=ciaoenv)
+@task()
+@depends(depends=[FILE['ccd_evt.fits'],
+                  FILE['obs_asol.lis'],
+                  (vars_in, (SRC, 'ra', 'dec'), {})],
+         targets=[(vars_in, (SRC, 'x', 'y', 'ccdid', 'theta', 'phi'), {})])
+@setenv(ciaoenv)
 def set_coords():
     kwargs = dict(evtfile=File['ccd_evt.fits'],
                   asolfile='@' + File['obs_asol.lis'],
@@ -251,18 +260,20 @@ def set_coords():
     Log.debug('dmcoords output: %s' % str(coords))
 
 ###################################################################################
-@Task.task(depends=[(vars_in, (SRC, 'ra', 'dec'), {})],
-           targets=[(vars_in, (SRC, 'gal_nh'), {})],
-           env=ciaoenv)
+@task()
+@depends(depends=[(vars_in, (SRC, 'ra', 'dec'), {})],
+         targets=[(vars_in, (SRC, 'gal_nh'), {})])
+@env(ciaoenv)
 def set_gal_nh():
     Src.gal_nh = Ska.CIAO.colden(Src.ra, Src.dec)
     Log.verbose('Got colden = %.2f' % Src.gal_nh)
 
 ###################################################################################
-@Task.task(depends=[(vars_in, (CFG, 'psf_fraction', 'psf_energy'), {}),
-                    (vars_in, (SRC, 'theta', 'phi'), {})],
-           targets=[(vars_in, (SRC, 'src_rad', 'excl_rad'), {})],
-           env=ciaoenv)
+@task()
+@depends(depends=[(vars_in, (CFG, 'psf_fraction', 'psf_energy'), {}),
+                  (vars_in, (SRC, 'theta', 'phi'), {})],
+         targets=[(vars_in, (SRC, 'src_rad', 'excl_rad'), {})])
+@env(ciaoenv)
 def get_apphot_ecf_rad():
     for par, psffrac in (('src_rad', Cfg.psf_fraction),
                          ('excl_rad', 0.90)):
@@ -275,16 +286,14 @@ def get_apphot_ecf_rad():
                     (psffrac * 100, Src[par], Src.theta, Src.phi))
 
 ###################################################################################
-@Task.task(depends=[(vars_in, (CFG, 'min_src_rad', 'bkg_ann_mul0', 'bkg_ann_mul1'), {}),
-                    (vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {}),
-                    ],
-           targets=[FILE['src.reg'],
-                    FILE['bkg.reg'],
-                    FILE['cut.reg'],
-                    (vars_in, (SRC, 'ann_r0', 'ann_r1'), {}),
-                    ],
-           env=ciaoenv,
-           )
+@task()
+@depends(depends=[(vars_in, (CFG, 'min_src_rad', 'bkg_ann_mul0', 'bkg_ann_mul1'), {}),
+                  (vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {})],
+         targets=[FILE['src.reg'],
+                  FILE['bkg.reg'],
+                  FILE['cut.reg'],
+                  (vars_in, (SRC, 'ann_r0', 'ann_r1'), {})])
+@env(ciaoenv)
 def make_apphot_reg_files(excl_srcs=None):
     """Make CIAO region files for aperture photometry
 
@@ -353,9 +362,10 @@ def make_apphot_reg_files(excl_srcs=None):
                   "rotbox(%.2f,%.2f,%.2f,%.2f,0)" % (Src.x, Src.y, 2*Src.ann_r1, 2*Src.ann_r1))
 
 #####################################################################################
-@Task.task(depends=[FILE['src.reg'],
-                    FILE['bkg.reg']],
-           targets=[FILE['ds9.reg']])
+@task()
+@depends(depends=[FILE['src.reg'],
+                  FILE['bkg.reg']],
+         targets=[FILE['ds9.reg']])
 def make_ds9_reg_files():
     src_lines = open(File['src.reg']).readlines()
     bkg_lines = [x for x in open(File['bkg.reg']).readlines() if not x.startswith('#')]
@@ -368,14 +378,15 @@ def make_ds9_reg_files():
     Log.verbose('Made ds9 region file %s' % File['ds9.reg'])
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['src.reg'],
-                    FILE['bkg.reg'],
-                    FILE['evt.fits'],
-                    FILE['expmap.fits']],
-           targets=[FILE['apphot.fits.gz'],
-                    FILE['apphot_exp.fits.gz']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['src.reg'],
+                  FILE['bkg.reg'],
+                  FILE['evt.fits'],
+                  FILE['expmap.fits']],
+         targets=[FILE['apphot.fits.gz'],
+                  FILE['apphot_exp.fits.gz']])
+@env(ciaoenv)
 def calc_aperture_photom():
     bash('punlearn dmextract')
     bash("""dmextract
@@ -397,10 +408,11 @@ def calc_aperture_photom():
     bash("gzip -f {{file.apphot.fits}} {{file.apphot_exp.fits}}")
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['evt.fits']],
-           targets=[FILE['cut_evt.fits']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['evt.fits']],
+         targets=[FILE['cut_evt.fits']])
+@env(ciaoenv)
 def make_cut_evt():
     bash("""dmcopy
             infile='{{file.evt.fits}}[sky=region({{file.cut.reg}})][{{cfg.energy_filter}}]'
@@ -408,11 +420,12 @@ def make_cut_evt():
             clobber=yes""")
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['src.reg'],
-                    FILE['bkg.reg']],
-           targets=[FILE['src_img.reg']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['src.reg'],
+                  FILE['bkg.reg']],
+         targets=[FILE['src_img.reg']])
+@env(ciaoenv)
 def make_src_img_reg():
     src_reg = open(File['src.reg']).read()
     bkg_reg = open(File['bkg.reg']).read()
@@ -480,33 +493,36 @@ def _make_cut_img(infile, filetype, outfits, outjpg, regfile):
     os.unlink(Val['outfits'] + '.tmp')
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['cut_evt.fits'],
-                    FILE['src_img.reg']],
-           targets=[FILE['src_img.fits'],
-                    FILE['src_img.jpg']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['cut_evt.fits'],
+                  FILE['src_img.reg']],
+         targets=[FILE['src_img.fits'],
+                  FILE['src_img.jpg']])
+@env(ciaoenv)
 def make_src_img():
     _make_cut_img(File['cut_evt.fits'], 'event', File['src_img.fits'],
                   File['src_img.jpg'], File['src_img.reg'])
     Log.verbose('Made src_img file %s' % File['src_img.jpg'])
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['expmap.fits'],
-                    FILE['src_img.reg']],
-           targets=[FILE['expmap_cut.fits'],
-                    FILE['expmap_cut.jpg']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['expmap.fits'],
+                  FILE['src_img.reg']],
+         targets=[FILE['expmap_cut.fits'],
+                  FILE['expmap_cut.jpg']])
+@env(ciaoenv)
 def make_expmap_cut_img():
     _make_cut_img(File['expmap.fits'], 'image', File['expmap_cut.fits'],
                   File['expmap_cut.jpg'], File['src_img.reg'])
     Log.verbose('Made expmap_cut_img file %s' % File['expmap_cut.jpg'])
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['bkg.reg']],
-           targets=[FILE['fill.reg']])
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['bkg.reg']],
+         targets=[FILE['fill.reg']])
 def make_fill_reg():
     bkg = open(File['bkg.reg']).read()
     fill = open(File['fill.reg'], 'w')
@@ -528,12 +544,13 @@ def make_fill_reg():
     Log.verbose('Made fill.reg file %s' % File['fill.reg'])
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['bkg.reg'],
-                    FILE['fill.reg'],
-                    FILE['src_img.fits']],
-           targets=[FILE['fill_img.fits']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['bkg.reg'],
+                  FILE['fill.reg'],
+                  FILE['src_img.fits']],
+         targets=[FILE['fill_img.fits']])
+@env(ciaoenv)
 def make_fill_img():
     bash("punlearn dmfilth")
     bash("""dmfilth
@@ -545,14 +562,15 @@ def make_fill_img():
          clobber=yes""")
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['cut.reg'],
-                    FILE['bkg.reg'],
-                    FILE['fill.reg'],
-                    FILE['src_img.reg'],
-                    FILE['expmap.fits']],
-           targets=[FILE['expmap_fill.fits']],
-           env=ciaoenv)
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['cut.reg'],
+                  FILE['bkg.reg'],
+                  FILE['fill.reg'],
+                  FILE['src_img.reg'],
+                  FILE['expmap.fits']],
+         targets=[FILE['expmap_fill.fits']])
+@env(ciaoenv)
 def make_expmap_fill():
     tmp1 = tempfile.NamedTemporaryFile()
     tmp2 = tempfile.NamedTemporaryFile()
@@ -573,13 +591,13 @@ def make_expmap_fill():
     Log.verbose('Made expmap_fill_img file %s' % File['expmap_fill.jpg'])
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['apphot.fits.gz'],
-                    FILE['apphot_exp.fits.gz']],
-           # targets=[FILE['apphot.pickle'],
-           #         FILE['apphot_exp.pickle'],
-           #         (vars_in, (SRC, 'src_area'), {})]
-           )
+@task()
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['apphot.fits.gz'],
+                  FILE['apphot_exp.fits.gz']],
+         targets=[FILE['apphot.pickle'],
+                  FILE['apphot_exp.pickle'],
+                  (vars_in, (SRC, 'src_area'), {})])
 def write_apphot_pickle():
     for name in ('apphot', 'apphot_exp'):
         rows = Ska.Table.read_table(name + '.fits.gz')
@@ -588,20 +606,19 @@ def write_apphot_pickle():
         Log.verbose('Wrote %s.pickle' % name)
 
 #####################################################################################
-@Task.task(depends=[(vars_in, (SRC, 'src_area'), {})],
-           targets=[(vars_in, (SRC, 'src_area_ratio'), {})])
+@task()
+@depends(depends=[(vars_in, (SRC, 'src_area'), {})],
+         targets=[(vars_in, (SRC, 'src_area_ratio'), {})])
 def set_src_area_ratio():
     nom_area = math.pi * Src.src_rad**2
     Src.src_area_ratio = Src.src_area / nom_area
     Log.verbose("Set Src.src_area_ratio = %.3f" % Src.src_area_ratio)
 
 #####################################################################################
-@Task.task(dir=FILE['src_dir'],
-           depends=[FILE['src_img.jpg'],
-                    FILE['expmap_cut.jpg'],
-                    FILE['index_template.html']],
-           targets=[FILE['index.html']],
-           always=True)
+@task(always=True)
+@chdir(FILE['src_dir'])
+@depends(depends=[FILE['index_template.html']],
+         targets=[FILE['index.html']])
 def make_index_html():
     index_html = render(open(File['index_template.html']).read())
     open(File['index.html'], 'w').write(index_html)

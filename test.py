@@ -4,7 +4,7 @@ import sys
 import ContextValue
 from ContextValue import render, ContextDict
 import Task
-from Task import task, task2, chdir, setenv, depends
+from Task import task, chdir, setenv, depends
 import Logging as Log
 import Ska.CIAO
 import Ska.Shell
@@ -41,13 +41,13 @@ if 0:
     Log.info(render('{{file.myval.abs}}'))
 
 # Define tasks (process steps)
-@task2(always=True)
+@task(always=True)
 @depends(targets=['{{file.evt2}}'])
 @chdir('{{file.srcdir}}')
 def make_evt2():
     bash('touch {{ file.evt2 }}')
 
-@task2()
+@task()
 @depends(depends=['{{file.evt2}}'],
          targets=['{{file.img}}',
                   '{{file.img2}}'])
@@ -56,17 +56,17 @@ def make_img():
     bash('touch {{ file.img }}')
     bash('touch {{ file.img2 }}')
 
-@task2()
+@task()
 def ls(dir):
     bash('ls ' + dir)
 
-@task2()
+@task()
 def wait(secs):
     bash("""echo 'hello'
             sleep %d
             echo 'world'""" % secs)
 
-@task2()
+@task()
 @chdir('data')
 @setenv(ciaoenv)
 def plist(tool='dmlist'):
@@ -104,11 +104,11 @@ if 0:
 for src['obsid'] in range(1):
     Task.start(message='Processing for obsid=%s' % src['obsid'])
 
-    #make_dir(File['srcdir'].abs)
-    #make_evt2()
-    #make_img()
+    make_dir(File['srcdir'].abs)
+    make_evt2()
+    make_img()
     plist('dmcopy')
-    #plist2('dmcopy')
-    #ls('{{ file.srcdir }}')
+    plist2('dmcopy')
+    ls('{{ file.srcdir }}')
 
     Task.end(message='Processing for obsid=%s' % src['obsid'])

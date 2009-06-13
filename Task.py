@@ -172,94 +172,6 @@ def check_depend(depends=None, targets=None):
               % (time.ctime(min_targets), time.ctime(max_depends)))
     return min_targets >= max_depends
 
-def task(depends=None, targets=None, env=None, always=None, dir=None):
-    """Function decorator to support definition of a processing task.
-
-    :param depends: List of input files that the task depends on
-    :param targets: List of output files that the task creates/updates
-    :param funcs: List of (func, args, kwargs) tuples
-    :param env: Dict of env var updates
-    :param always: Always run the task even if prior processing has failed
-    :param dir: Directory in which to run
-
-    :returns: Decorated function
-    """
-    def decorate(func):
-        def new_func(*args, **kwargs):
-            if status['fail'] and not always:
-                return
-
-            Log.verbose('')
-            Log.verbose('-' * 60)
-            Log.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
-            Log.verbose('-' * 60)
-            origdir = os.getcwd()
-            origenv = os.environ.copy()
-
-            # Change to specified dir after caching current dir.  Allow for uncaught
-            # exception here.  Change this?
-            try:
-                if dir:
-                    try:
-                        newdir = ContextValue.render(dir)
-                        os.chdir(newdir)
-                        Log.verbose('Changed to directory "%s"' % newdir)
-                    except OSError, msg:
-                        raise TaskFailure, msg
-
-                if env:
-                    # Set local environment
-                    Log.verbose('Updating local environment')
-                    os.environ.update(env)
-
-                # Check dependencies before execution.  If met then abort task with success.
-                # The order is important: check_depend can raise an exception if any depends files
-                # are missing.  But after that if there are no 
-                if check_depend(depends, targets) and targets:
-                    Log.verbose('Skipping because dependencies met')
-                    raise TaskSuccess
-
-                # Actually run the function.  Catch any exceptions and re-raise as TaskFailure.
-                # This ignores function return val, but task processing should not depend on
-                # return vals anyway since there is no guarantee that func will get run anyway.
-                try:
-                    Log.debug('Running function %s' % func.func_name)
-                    func(*args, **kwargs)
-                except KeyboardInterrupt:
-                    raise
-                except:
-                    # Change limit based on verbosity [to do]
-                    raise TaskFailure, format_exc(limit=2)
-
-                if targets and not check_depend(depends, targets):
-                    raise TaskFailure, 'Dependency not met after processing'
-                
-            except TaskSuccess:
-                pass
-            except (TaskFailure, DependFileMissing), msg:
-                Log.error('%s: %s\n\n' % (func.func_name, msg))
-                status['fail'] = True
-
-            if env:
-                # Reset local environment
-                for envvar in env:
-                    del os.environ[envvar]
-                os.environ.update(origenv)
-                Log.verbose('Restoring local environment')
-                
-
-            # Go back to original directory
-            if dir:
-                os.chdir(origdir)
-                Log.verbose('Restored directory to "%s"' % origdir)
-
-            return
-                
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
-        return new_func
-    return decorate
-
 class TaskDecor(object):
     def setup(self):
         pass
@@ -294,83 +206,40 @@ class chdir(TaskDecor):
         os.chdir(self.origdir)
         Log.verbose('Restored directory to "%s"' % self.origdir)
 
-def chdir2(dir):
-    """Function decorator to support definition of a processing task.
+class setenv(TaskDecor):
+    def __init__(self, env):
+        self.env = env
 
-    :param dir: directory
-    :returns: Decorated function
-    """
-    def decorate(func):
-        def new_func(*args, **kwargs):
-            origdir = os.getcwd()
-            newdir = ContextValue.render(dir)
+    def setup(self):
+        self.origenv = os.environ.copy()
+        os.environ.update(self.env)
+        Log.verbose('Updated local environment')
 
-            try:
-                os.chdir(newdir)
-                Log.verbose('Changed to directory "%s"' % newdir)
+    def teardown(self):
+        for envvar in self.env:
+            del os.environ[envvar]
+        os.environ.update(self.origenv)
+        Log.verbose('Restored local environment')
 
-                func(*args, **kwargs)
-            finally:
-                os.chdir(origdir)
-                Log.verbose('Restored directory to "%s"' % origdir)
+class depends(TaskDecor):
+    def __init__(self, depends=None, targets=None):
+        self.depends = depends
+        self.targets = targets
+        self.skip = False
 
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
-        return new_func
-    return decorate
+    def setup(self):
+        if check_depend(self.depends, self.targets) and self.targets:
+            self.skip = True
+            Log.verbose('Skipping because dependencies met')
+            raise TaskSuccess
 
-def setenv(env):
-    """Set environment.
+    def teardown(self):
+        if (not self.skip
+            and self.targets
+            and not check_depend(self.depends, self.targets)):
+            raise TaskFailure, 'Dependency not met after processing'
 
-    :param env: delta environment dict
-
-    :returns: Decorated function
-    """
-    def decorate(func):
-        def new_func(*args, **kwargs):
-            origenv = os.environ.copy()
-
-            try:
-                os.environ.update(env)
-                Log.verbose('Updated local environment')
-
-                func(*args, **kwargs)
-            finally:
-                for envvar in env:
-                    del os.environ[envvar]
-                os.environ.update(origenv)
-                Log.verbose('Restored local environment')
-
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
-        return new_func
-    return decorate
-
-def depends(depends=None, targets=None):
-    """Function decorator to support definition of a processing task.
-
-    :param depends: List of input files that the task depends on
-    :param targets: List of output files that the task creates/updates
-    :returns: Decorated function
-    """
-    def decorate(func):
-        def new_func(*args, **kwargs):
-            try:
-                if check_depend(depends, targets) and targets:
-                    Log.verbose('Skipping because dependencies met')
-                    raise TaskSuccess
-
-                func(*args, **kwargs)
-            finally:
-                if targets and not check_depend(depends, targets):
-                    raise TaskFailure, 'Dependency not met after processing'
-
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
-        return new_func
-    return decorate
-
-def task2(always=None):
+def task(always=None):
     """Function decorator to support definition of a processing task.
 
     :param always: Always run the task even if prior processing has failed
@@ -393,9 +262,8 @@ def task2(always=None):
             except TaskSuccess:
                 pass
             except:
-                Log.error('%s: %s\n\n' % (func.func_name, format_exc(limit=2)))
+                Log.error('%s: %s\n\n' % (func.func_name, format_exc()))
                 status['fail'] = True
-            return
                 
         new_func.func_name = func.func_name
         new_func.func_doc = func.func_doc
