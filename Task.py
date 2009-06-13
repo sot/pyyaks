@@ -176,7 +176,7 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
     """Function decorator to support definition of a processing task.
 
     :param depends: List of input files that the task depends on
-    :param target_funcs: List of output files that the task creates/updates
+    :param targets: List of output files that the task creates/updates
     :param funcs: List of (func, args, kwargs) tuples
     :param env: Dict of env var updates
     :param always: Always run the task even if prior processing has failed
@@ -253,6 +253,148 @@ def task(depends=None, targets=None, env=None, always=None, dir=None):
                 os.chdir(origdir)
                 Log.verbose('Restored directory to "%s"' % origdir)
 
+            return
+                
+        new_func.func_name = func.func_name
+        new_func.func_doc = func.func_doc
+        return new_func
+    return decorate
+
+class TaskDecor(object):
+    def setup(self):
+        pass
+
+    def teardown(self):
+        pass
+
+    def __call__(self, func):
+        """return function decorator"""
+        def new_func(*args, **kwargs):
+            try:
+                self.setup()
+                func(*args, **kwargs)
+            finally:
+                self.teardown()
+
+        new_func.func_name = func.func_name
+        new_func.func_doc = func.func_doc
+        return new_func
+
+class chdir(TaskDecor):
+    def __init__(self, newdir):
+        self.newdir = newdir
+        
+    def setup(self):
+        self.origdir = os.getcwd()
+        newdir = ContextValue.render(self.newdir)
+        os.chdir(newdir)
+        Log.verbose('Changed to directory "%s"' % newdir)
+
+    def teardown(self):
+        os.chdir(self.origdir)
+        Log.verbose('Restored directory to "%s"' % self.origdir)
+
+def chdir2(dir):
+    """Function decorator to support definition of a processing task.
+
+    :param dir: directory
+    :returns: Decorated function
+    """
+    def decorate(func):
+        def new_func(*args, **kwargs):
+            origdir = os.getcwd()
+            newdir = ContextValue.render(dir)
+
+            try:
+                os.chdir(newdir)
+                Log.verbose('Changed to directory "%s"' % newdir)
+
+                func(*args, **kwargs)
+            finally:
+                os.chdir(origdir)
+                Log.verbose('Restored directory to "%s"' % origdir)
+
+        new_func.func_name = func.func_name
+        new_func.func_doc = func.func_doc
+        return new_func
+    return decorate
+
+def setenv(env):
+    """Set environment.
+
+    :param env: delta environment dict
+
+    :returns: Decorated function
+    """
+    def decorate(func):
+        def new_func(*args, **kwargs):
+            origenv = os.environ.copy()
+
+            try:
+                os.environ.update(env)
+                Log.verbose('Updated local environment')
+
+                func(*args, **kwargs)
+            finally:
+                for envvar in env:
+                    del os.environ[envvar]
+                os.environ.update(origenv)
+                Log.verbose('Restored local environment')
+
+        new_func.func_name = func.func_name
+        new_func.func_doc = func.func_doc
+        return new_func
+    return decorate
+
+def depends(depends=None, targets=None):
+    """Function decorator to support definition of a processing task.
+
+    :param depends: List of input files that the task depends on
+    :param targets: List of output files that the task creates/updates
+    :returns: Decorated function
+    """
+    def decorate(func):
+        def new_func(*args, **kwargs):
+            try:
+                if check_depend(depends, targets) and targets:
+                    Log.verbose('Skipping because dependencies met')
+                    raise TaskSuccess
+
+                func(*args, **kwargs)
+            finally:
+                if targets and not check_depend(depends, targets):
+                    raise TaskFailure, 'Dependency not met after processing'
+
+        new_func.func_name = func.func_name
+        new_func.func_doc = func.func_doc
+        return new_func
+    return decorate
+
+def task2(always=None):
+    """Function decorator to support definition of a processing task.
+
+    :param always: Always run the task even if prior processing has failed
+    :returns: Decorated function
+    """
+    def decorate(func):
+        def new_func(*args, **kwargs):
+            if status['fail'] and not always:
+                return
+
+            Log.verbose('')
+            Log.verbose('-' * 60)
+            Log.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
+            Log.verbose('-' * 60)
+
+            try:
+                func(*args, **kwargs)
+            except KeyboardInterrupt:
+                raise
+            except TaskSuccess:
+                pass
+            except:
+                Log.error('%s: %s\n\n' % (func.func_name, format_exc(limit=2)))
+                status['fail'] = True
             return
                 
         new_func.func_name = func.func_name
