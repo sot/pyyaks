@@ -1,12 +1,10 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
-from __future__ import with_statement 
-import contextlib
-
+import sys
 import os
 import re
 import time
 from stat import ST_MTIME # Really constants 7 and 8
-from traceback import format_exc
+import traceback
 import ContextValue
 import Logging as Log
 import Shell
@@ -25,82 +23,6 @@ class TaskSuccess(Exception):
 
 class TaskFailure(Exception):
     pass
-
-def preserve_cwd(function):
-   def decorator(*args, **kwargs):
-      cwd = os.getcwd()
-      try:
-          print "preserve_cwd: running function"
-          return function(*args, **kwargs)
-      finally:
-          print "preserve_cwd: changing back to", cwd
-          os.chdir(cwd)
-   return decorator
-
-@contextlib.contextmanager
-def remember_cwd():
-    curdir = os.getcwd()
-    print "remember_cwd before:", os.getcwd()
-    try:
-        yield
-    finally:
-        os.chdir(curdir)
-        print "remember_cwd after:", os.getcwd()
-
-def with_chdir(dirname):
-    try:
-        with remember_cwd():
-            os.chdir(dirname)
-            print "with_chdir before:", os.getcwd()
-    except Exception, msg:
-        print msg
-    print "with_chdir after:", os.getcwd()
-
-class RevealAccess(object):
-    """A data descriptor that sets and returns values
-       normally and prints a message logging their access.
-    """
-
-    def __init__(self, initval=None, name='var'):
-        self.val = initval
-        self.name = name
-
-    def __get__(self, obj, objtype):
-        print 'Retrieving', self.name
-        return self.val
-
-    def __set__(self, obj, val):
-        print 'Updating' , self.name
-        self.val = val
-
-class MyClass(object):
-    x = RevealAccess(10, 'var "x"')
-    y = 5
-
-
-@preserve_cwd
-def chdir(dirname):
-    print "chdir before:", os.getcwd()
-    os.chdir(dirname)
-    print "chdir after:", os.getcwd()
-
-def test_chdir(dirname):
-    print "test_chdir before:", os.getcwd()
-    chdir('/home/aldcroft')
-    print "test_chdir after:", os.getcwd()
-    
-    print "test_chdir before:", os.getcwd()
-    chdir('/nope/aldcroft')
-    print "test_chdir before:", os.getcwd()
-
-def test_with_chdir(dirname):
-    print "test_with_chdir before:", os.getcwd()
-    with_chdir('/home/aldcroft')
-    print "test_with_chdir after:", os.getcwd()
-    
-    print "test_with_chdir before:", os.getcwd()
-    with_chdir('/nope/aldcroft')
-    print "test_with_chdir before:", os.getcwd()
 
 def check_depend(depends=None, targets=None):
     """Check that dependencies are satisfied.
@@ -185,6 +107,13 @@ class TaskDecor(object):
             try:
                 self.setup()
                 func(*args, **kwargs)
+            except (KeyboardInterrupt, TaskSuccess):
+                raise
+            except:
+                if status['fail'] is False:
+                    Log.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    status['fail'] = True
+                raise
             finally:
                 self.teardown()
 
@@ -204,7 +133,7 @@ class chdir(TaskDecor):
 
     def teardown(self):
         os.chdir(self.origdir)
-        Log.verbose('Restored directory to "%s"' % self.origdir)
+        Log.debug('Restored directory to "%s"' % self.origdir)
 
 class setenv(TaskDecor):
     def __init__(self, env):
@@ -213,13 +142,13 @@ class setenv(TaskDecor):
     def setup(self):
         self.origenv = os.environ.copy()
         os.environ.update(self.env)
-        Log.verbose('Updated local environment')
+        Log.debug('Updated local environment')
 
     def teardown(self):
         for envvar in self.env:
             del os.environ[envvar]
         os.environ.update(self.origenv)
-        Log.verbose('Restored local environment')
+        Log.debug('Restored local environment')
 
 class depends(TaskDecor):
     def __init__(self, depends=None, targets=None):
@@ -245,6 +174,7 @@ def task(always=None):
     :param always: Always run the task even if prior processing has failed
     :returns: Decorated function
     """
+
     def decorate(func):
         def new_func(*args, **kwargs):
             if status['fail'] and not always:
@@ -262,8 +192,10 @@ def task(always=None):
             except TaskSuccess:
                 pass
             except:
-                Log.error('%s: %s\n\n' % (func.func_name, format_exc()))
-                status['fail'] = True
+                if status['fail'] is False:
+                    print 'Setting status=fail in task'
+                    Log.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    status['fail'] = True
                 
         new_func.func_name = func.func_name
         new_func.func_doc = func.func_doc

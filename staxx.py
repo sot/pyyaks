@@ -8,6 +8,7 @@ import tempfile
 import math
 import shutil
 import time
+import pdb
 
 print 'load1'
 import Ska.Shell
@@ -17,9 +18,11 @@ import Ska.CIAO
 import Chandra.ECF
 import Ska.astro
 import Ska.Numpy
+import cosmocalc
 
 print 'load2'
 import Task
+from Task import task, chdir, setenv, depends
 import Logging as Log
 import ContextValue
 from ContextValue import ContextDict, render, render_first_arg, render_args
@@ -28,12 +31,28 @@ def get_options():
     from optparse import OptionParser
     parser = OptionParser()
     parser.set_defaults()
-    parser.add_option("--logdir",
-                      default='logs',
-                      help="Directory for output logs")
+    parser.add_option("--outdir",
+                      default='data_10kpc',
+                      help="Directory for output data")
+    parser.add_option("--logfile",
+                      default='logs/%Y-%m-%d/%H:%M:%S',
+                      help="File name for output logs in strftime format")
     parser.add_option("--loglevel",
                       default='task',
                       help="Log level (debug|task|summary|quiet)")
+    parser.add_option("--objlist",
+                      default='sources/sdss_gal_stack0.dat',
+                      help="Object list file")
+    parser.add_option("--excllist",
+                      default='sources/xsrclist4stackexcl.dat',
+                      help="Excluded objects list file")
+    parser.add_option("--aperture-size",
+                      type='float',
+                      default=0.9,
+                      help="Source aperture size")
+    parser.add_option("--aperture-unit",
+                      default="ecf",
+                      help="Source aperture units (ecf|kpc|pixel)")
     parser.add_option("--filter",
                       dest = 'filters',
                       default=[],
@@ -43,14 +62,15 @@ def get_options():
     return (opt, args)
 
 opt, args = get_options()
-
 print 'load3'
+
 # Initialize output logging
 loglevel = dict(debug=Log.DEBUG, task=Log.VERBOSE, summary=Log.INFO, quiet=60)[opt.loglevel]
-if not os.path.exists(opt.logdir):
-    os.mkdir(opt.logdir)
-Log.init(stdoutlevel=loglevel, filename=os.path.join(opt.logdir, time.strftime('%Y-%m-%d:%H:%M:%S')),
-         filelevel=loglevel, format="%(message)s")
+logfile = time.strftime(opt.logfile)
+logdir = os.path.dirname(logfile)
+if not os.path.exists(logdir):
+    os.mkdir(logdir)
+Log.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
 
 print 'load4'
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
@@ -67,27 +87,28 @@ print 'load6'
 # Configuration values
 CFG = ContextDict('cfg')
 CFG.update(dict(energy_filter = 'energy=500:7000',
-                psf_fraction = 0.9,               # enclosed cts frac for aperture photom
-                psf_energy = 1.5,                 # kev
-                min_src_rad = 4,
+                aperture_size = opt.aperture_size,
+                aperture_unit = opt.aperture_unit,
+                psf_energy = 1.5,       # kev
+                excl_rad_ecf = 0.9,
+                min_src_rad = 4,        # pixels
                 bkg_ann_mul0 = 2.0,
                 bkg_ann_mul1 = 7.0,
                 sizefits = 80,
-                sizejpg = 300,))
+                sizejpg = 300,
+                arcsec_per_pixel = 0.492, # ACIS plate scale
+                ))
 Cfg = CFG.accessor()
 
 input_dir = 'champ*/OBS{{src.obsid.val|stringformat:"05d"}}/XPIPE' # Input data directory glob
-output_dir = 'data'                            # Output data directory
 log_file = 'staxx.log'                      # Yaxx log file or directory
 evt2_glob   = 'evt2_ccdid{{src.ccdid}}.fits*'
 expmap_glob = 'expmap_{{src.ccdid}}.fits*'
 asol_glob   = 'pcad*_asol1.fits*'
 prog_dir = os.path.abspath(os.path.dirname(__file__))
-objlist = 'sources/sdss_gal_stack0.dat'	        # Object list file
-excllist = 'sources/xsrclist4stackexcl.dat'      # Excluded objects file
 
 # Define file aliases
-FILE = ContextDict('file', basedir=output_dir, valuetype=ContextValue.File)
+FILE = ContextDict('file', basedir=opt.outdir, valuetype=ContextValue.File)
 FILE.update(dict(
     resources_dir = 'resources / ',
     index_template ='resources / index_template',
@@ -263,37 +284,60 @@ def set_coords():
 @task()
 @depends(depends=[(vars_in, (SRC, 'ra', 'dec'), {})],
          targets=[(vars_in, (SRC, 'gal_nh'), {})])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def set_gal_nh():
     Src.gal_nh = Ska.CIAO.colden(Src.ra, Src.dec)
     Log.verbose('Got colden = %.2f' % Src.gal_nh)
 
 ###################################################################################
 @task()
-@depends(depends=[(vars_in, (CFG, 'psf_fraction', 'psf_energy'), {}),
-                  (vars_in, (SRC, 'theta', 'phi'), {})],
-         targets=[(vars_in, (SRC, 'src_rad', 'excl_rad'), {})])
-@env(ciaoenv)
+@depends(depends=[(vars_in, (SRC, 'theta', 'phi', 'z'), {})],
+         targets=[(vars_in, (SRC, 'src_rad', 'excl_rad', 'src_rad_ecf', 'excl_rad_ecf'), {})])
+@setenv(ciaoenv)
 def get_apphot_ecf_rad():
-    for par, psffrac in (('src_rad', Cfg.psf_fraction),
-                         ('excl_rad', 0.90)):
-        rad = Chandra.ECF.interp_ECF(ecf=psffrac, energy=Cfg.psf_energy,
-                                     theta=Src.theta, phi=Src.phi,
-                                     shape='circular', value='radius')
-        # Convert from arcsec to pixels and require that radius >= Cfg.min_src_rad 
-        Src[par] = max(rad / 0.492, Cfg.min_src_rad)
-        Log.verbose("Extraction radius (%.0f%%) is %.2f pixels for (theta,phi)=(%.2f',%.1f deg)" %
-                    (psffrac * 100, Src[par], Src.theta, Src.phi))
+    ecf_kwargs = dict(energy=Cfg.psf_energy,
+                      theta=Src.theta, phi=Src.phi)
+    
+    Log.verbose('Calculating apertures for theta=%.2f arcmin phi=%.1f degrees energy=%.2f keV'
+             % (Src.theta, Src.phi, Cfg.psf_energy))
+    for par, size, unit in (('src_rad', Cfg.aperture_size, Cfg.aperture_unit),
+                            ('excl_rad', Cfg.excl_rad_ecf, 'ecf')):
+        if unit in ('pixel', 'kpc'):
+            plate_scale = (1 / cosmocalc.cosmocalc(Src.z)['PS_kpc'] if unit == 'kpc'
+                           else Cfg.arcsec_per_pixel)
+            rad_arcsec = size * plate_scale
+            ecf = Chandra.ECF.ECF_radius(rad_arcsec, **ecf_kwargs)
+        elif unit == 'ecf':
+            ecf = size
+            rad_arcsec = Chandra.ECF.interp_ECF(ecf=size, **ecf_kwargs)
+        else:
+            raise ValueError('Unknown aperture unit "%s"' % unit)
+
+        rad_pix = rad_arcsec / Cfg.arcsec_per_pixel
+
+        # If radius is below allowed min then adjust
+        if rad_pix < Cfg.min_src_rad:
+            Log.info('Extraction radius %.2f pixels too small - setting to %.2f' %
+                     (rad_pix, Cfg.min_src_rad))
+            rad_pix = Cfg.min_src_rad
+            rad_arcsec = rad_pix * Cfg.arcsec_per_pixel
+            ecf = Chandra.ECF.ECF_radius(rad_arcsec, **ecf_kwargs)
+                     
+        # Convert from arcsec to pixels and require that radius >= Cfg.min_src_rad
+        Src[par] = rad_pix
+        Src[par + '_ecf'] = ecf
+
+        Log.verbose("%s aperture_size=%.2f (%s) radius=%.2f pixels ecf=%.2f"
+                    % (par, size, unit, rad_pix, ecf))
 
 ###################################################################################
 @task()
-@depends(depends=[(vars_in, (CFG, 'min_src_rad', 'bkg_ann_mul0', 'bkg_ann_mul1'), {}),
-                  (vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {})],
+@depends(depends=[(vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {})],
          targets=[FILE['src.reg'],
                   FILE['bkg.reg'],
                   FILE['cut.reg'],
                   (vars_in, (SRC, 'ann_r0', 'ann_r1'), {})])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_apphot_reg_files(excl_srcs=None):
     """Make CIAO region files for aperture photometry
 
@@ -386,7 +430,7 @@ def make_ds9_reg_files():
                   FILE['expmap.fits']],
          targets=[FILE['apphot.fits.gz'],
                   FILE['apphot_exp.fits.gz']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def calc_aperture_photom():
     bash('punlearn dmextract')
     bash("""dmextract
@@ -412,7 +456,7 @@ def calc_aperture_photom():
 @chdir(FILE['src_dir'])
 @depends(depends=[FILE['evt.fits']],
          targets=[FILE['cut_evt.fits']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_cut_evt():
     bash("""dmcopy
             infile='{{file.evt.fits}}[sky=region({{file.cut.reg}})][{{cfg.energy_filter}}]'
@@ -425,7 +469,7 @@ def make_cut_evt():
 @depends(depends=[FILE['src.reg'],
                   FILE['bkg.reg']],
          targets=[FILE['src_img.reg']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_src_img_reg():
     src_reg = open(File['src.reg']).read()
     bkg_reg = open(File['bkg.reg']).read()
@@ -499,7 +543,7 @@ def _make_cut_img(infile, filetype, outfits, outjpg, regfile):
                   FILE['src_img.reg']],
          targets=[FILE['src_img.fits'],
                   FILE['src_img.jpg']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_src_img():
     _make_cut_img(File['cut_evt.fits'], 'event', File['src_img.fits'],
                   File['src_img.jpg'], File['src_img.reg'])
@@ -512,7 +556,7 @@ def make_src_img():
                   FILE['src_img.reg']],
          targets=[FILE['expmap_cut.fits'],
                   FILE['expmap_cut.jpg']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_expmap_cut_img():
     _make_cut_img(File['expmap.fits'], 'image', File['expmap_cut.fits'],
                   File['expmap_cut.jpg'], File['src_img.reg'])
@@ -550,7 +594,7 @@ def make_fill_reg():
                   FILE['fill.reg'],
                   FILE['src_img.fits']],
          targets=[FILE['fill_img.fits']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_fill_img():
     bash("punlearn dmfilth")
     bash("""dmfilth
@@ -570,7 +614,7 @@ def make_fill_img():
                   FILE['src_img.reg'],
                   FILE['expmap.fits']],
          targets=[FILE['expmap_fill.fits']])
-@env(ciaoenv)
+@setenv(ciaoenv)
 def make_expmap_fill():
     tmp1 = tempfile.NamedTemporaryFile()
     tmp2 = tempfile.NamedTemporaryFile()
@@ -628,8 +672,8 @@ def make_index_html():
 # Main processing loop
 #####################################################################################
 
-srcs = Ska.Table.read_table(objlist)
-excl_srcs = Ska.Table.read_table(excllist)
+srcs = Ska.Table.read_table(opt.objlist)[:3]
+excl_srcs = Ska.Table.read_table(opt.excllist)
 
 for src in Ska.Numpy.filter(srcs, opt.filters):
     # Clear the SRC contextdict and then populate from objlist table rows
@@ -643,9 +687,6 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     pos.delim = ''
     Src.xdat_id = re.sub(r'\..*', '', pos.ra_hms) + re.sub(r'\..*', '', pos.dec_dms) 
     Src.xdat_id = "%.4f_%.4f" % (Src.ra, Src.dec)
-
-    if os.path.exists(File['info.pickle']):
-        continue
 
     Task.start(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
 
