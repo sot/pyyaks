@@ -672,7 +672,7 @@ def make_index_html():
 # Main processing loop
 #####################################################################################
 
-srcs = Ska.Table.read_table(opt.objlist)[:3]
+srcs = Ska.Table.read_table(opt.objlist)
 excl_srcs = Ska.Table.read_table(opt.excllist)
 
 for src in Ska.Numpy.filter(srcs, opt.filters):
