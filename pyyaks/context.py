@@ -2,12 +2,14 @@ import re
 import os
 import time
 import stat
+import pdb
 
 import django.template
 import django.conf
 import Ska.File
 
 Context = {}
+Django_tag = re.compile(r'{[%{]')
 
 try:
     django.conf.settings.configure()
@@ -45,92 +47,77 @@ def render_args(func):
     return newfunc
 
 class Value(object):
-    def __init__(self, val=None, name=None):
-        self.val = val
-        self.name = name
-        self._mtime = None if val is None else time.time()
-        self._format = None
+    def __init__(self, val=None, name=None, basedir=None, format=None, ext=None):
+        # Possibly inherit attrs (except for 'ext') from an existing Value object
+        if isinstance(val, Value):
+            for attr in ('_val', '_mtime', 'name', 'basedir', 'format'):
+                setattr(self, attr, getattr(val, attr))
+        else:
+            self._val = val
+            self._mtime = None if val is None else time.time()
+            self.name = name
+            self.format = format
+            self.basedir = basedir and os.path.abspath(basedir)
+            self.format = format
+
+        self.ext = ext
 
     def getval(self):
-        return self.__val
+        return self._val
 
     def setval(self, val):
-        self.__val = val
-        try:
-            self.template = django.template.Template(val + '')
-        except TypeError:
-            self.template = None
+        self._val = val
         self._mtime = time.time()
 
     val = property(getval, setval)
 
     @property
     def mtime(self):
-        return self._mtime
+        if self.basedir:
+            filename = str(self)
+            return (os.stat(filename)[stat.ST_MTIME] if os.path.exists(filename) else None)
+        else:
+            return self._mtime
 
     def __unicode__(self):
         return str(self)
     
     def __str__(self):
-        if self.template is not None:
-            django_context = django.template.Context(Context)
-            val = self.template.render(django_context)
-            while (re.search(r'{[%{]', val)):
-                newval = django.template.Template(val).render(django_context)
-                if newval == val:
+        # pdb.set_trace()
+        val = self._val
+        try:                            
+            # Following line will give TypeError unless val is string-like
+            while (Django_tag.search(val)):
+                template = django.template.Template(val)
+                context = django.template.Context(Context)
+                strval = template.render(context)
+                if strval == val:
                     break
                 else:
-                    val = newval
-        else:
-            if self._format:
-                val = self._format % self.val
-            else:
-                val = str(self.val)
-        return val
+                    val = strval
+        except TypeError:
+            strval = (self.format or '%s') % val
 
-class File(Value):
-    def __init__(self, val, name=None, basedir=None):
-        # First initialize as a regular Value, but strip spaces for convenience
-        try:
-            val = re.sub(' ', '', val)
-        except:
-            pass
-        super(File, self).__init__(val, name)
-        self.basedir = (os.getcwd() if basedir is None else os.path.abspath(basedir))
+        if self.basedir:
+            if not os.path.isabs(strval):
+                strval = os.path.join(self.basedir, strval)
+            strval = Ska.File.relpath(strval + ('.' + self.ext if self.ext else ''))
 
-    def __str__(self):
-        """Return rendered object value as a path relative to cwd.  The
-        value is taken as a path relative to self.basedir."""
-        
-        # Generate filepath as rendered object val relative to basedir.
-        # Note that os.path.join(p1,p2) will ignore p1 if p2 is absolute.
-        filepath = os.path.join(self.basedir, super(File, self).__str__())
-        return Ska.File.relpath(filepath)
+        return strval
 
-    def getrel(self):
+    @property
+    def rel(self):
         return str(self)
 
-    def getabs(self):
-        # First get the path but without automatic relative path translation
-        path = render(self.val)
-        if os.path.isabs(path):
-            return path
-        else:
-            return os.path.join(self.basedir, path)
+    @property
+    def abs(self):
+        return os.path.abspath(str(self))
 
     def __getattr__(self, ext):
         """Any unfound attribute lookup is interpreted as a file extension.
-        A new File object with that extension is returned.
+        A new Value object with that extension is returned.
         """
-        return File(val=self.val + '.' + ext, name=self.name, basedir=self.basedir)
-
-    rel = property(getrel)
-    abs = property(getabs)
-
-    @property
-    def mtime(self):
-        filename = render(self.val)
-        return (os.stat(filename)[stat.ST_MTIME] if os.path.exists(filename) else None)
+        return Value(val=self, ext=ext)
 
 class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the Context and
@@ -143,51 +130,32 @@ class ContextDict(dict):
     files['src']  = 'data/obs{{ src.obsid }}'
     files['evt2'] = '{{ file.src }}/acis_evt2.fits'
     """
-    def __init__(self, name, valuetype=Value, **kwargs):
+    def __init__(self, name, basedir=None):
         dict.__init__(self)
         Context[name] = self
         self.name = name
-        self.valuetype = valuetype
-        self.kwargs = kwargs
-        self.format = dict()
+        self.basedir = basedir
 
     def __getitem__(self, key):
         """Get key value from the ContextDict.  For a ContextDict with valuetype==File
         then allow for extensions on key.
         """
-        # If the key is not found then look for an extension and try again without the extension
-        if self.valuetype == File:
-            match = re.match(r'([^.]+)(\..+)', key)
-            base, ext = match.groups() if match else (key, '')
-            if base not in self:
-                dict.__setitem__(self, base, File(val=None, name=base, **self.kwargs))
-                
-            baseFile = dict.__getitem__(self, base)
-            return File(val=baseFile.val + ext, name=baseFile.name, basedir=baseFile.basedir)
-            
-        if key not in self and self.valuetype == File:
-            try:
-                base, ext = re.match(r'([^.]+)(\..+)', key).groups()
-                baseFile = dict.__getitem__(self, base)
-                return File(val=baseFile.val + ext, name=baseFile.name, basedir=baseFile.basedir)
-            except:
-                # If any of the above didn't work then fall through and raise KeyError exception
-                # below using original key
-                pass
+        match = re.match(r'([^.]+)\.(.+)', key)
+        base, ext = match.groups() if match else (key, None)
 
-        return dict.__getitem__(self, key)
+        # Autogenerate an entry for key
+        if base not in self:
+            dict.__setitem__(self, base, Value(val=None, name=base, basedir=basedir))
+
+        baseValue = dict.__getitem__(self, base)
+        return (Value(baseValue, ext=ext) if ext else baseValue)
 
     def __setitem__(self, key, val):
-        if isinstance(val, self.valuetype):
-            dict.__setitem__(self, key, val)
+        # If ContextValue was already init'd then just update val
+        if key in self:
+            dict.__getitem__(self, key).val = val
         else:
-            # If ContextValue was already init'd then just update val
-            if key in self:
-                dict.__getitem__(self, key).val = val
-            else:
-                dict.__setitem__(self, key, self.valuetype(val, key, **self.kwargs))
-                if key in self.format:
-                    dict.__getitem__(self, key)._format = self.format[key]
+            dict.__setitem__(self, key, Value(val=val, name=key, basedir=self.basedir))
 
     def update(self, vals):
         if hasattr(vals, 'items'):
