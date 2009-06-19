@@ -4,4 +4,4 @@ import cPickle as pickle
 import sys
 import pprint
 
-pprint.pprint( pickle.load( open(sys.argv[1]) ), width=40 )
+pprint.pprint( pickle.load( open(sys.argv[1]) ), width=80 )
