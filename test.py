@@ -22,9 +22,14 @@ pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
 
 # Define src vars
 src = ContextDict('src')
+src.format['obsid'] = '%06d'
 src['obsid'] = 123
+print str(src['obsid'])
 src['ccdid'] = 2
 src['srcdir'] = '{{ src.obsid }}/{{src.ccdid}}'
+src['obsid'] = 123
+print str(src['obsid'])
+sys.exit(0)
 
 # Define file aliases
 File = ContextDict('file', basedir='data', valuetype=ContextValue.File)

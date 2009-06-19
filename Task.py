@@ -24,37 +24,48 @@ class TaskSuccess(Exception):
 class TaskFailure(Exception):
     pass
 
+def func_depend(func, *args, **kwargs):
+    """
+    For (func, args, kwargs) input, func(*args, **kwargs) is evaluated and is
+    evaluated in boolean context.  For the ``depends`` list a func() return of
+    False raises an exception indicating that the task dependencies are not
+    met.  For ``targets`` a func() return of False results in check_depend
+    returning False.
+    """
+    if isinstance(dep, (list, tuple)):
+        func, args, kwargs = dep
+        if func(*args, **kwargs):
+            Log.debug('Func %s succeeded' % func.func_name)
+        else:
+            Log.debug('Func %s failed' % func.func_name)
+            if deptype == 'depends':
+                raise DependFuncFailure, 'Depend function %s false' % func.func_name
+            else:
+                return False                
+
 def check_depend(depends=None, targets=None):
     """Check that dependencies are satisfied.
 
     A dependency in the ``depends`` or ``targets`` list can be either a file
-    name supplied as a renderable object or a sequence with 3 elements: func,
-    args, kwargs.
+    name as a string or a renderable object with an mtime attribute.
 
     A file name is treated in the usual sense of depend and target files.  A
     missing depend file raises an exception and a missing target means
     check_depend returns False.  In addition all target files must be newer
     than all depend files.
 
-    For (func, args, kwargs) input, func(*args, **kwargs) is evaluated and is
-    evaluated in boolean context.  For the ``depends`` list a func() return of
-    False raises an exception indicating that the task dependencies are not
-    met.  For ``targets`` a func() return of False results in check_depend
-    returning False.
-
     :param depends: list of file or function dependencies
     :param targets: list of file or function targets
 
     :returns: boolean indicating that dependencies are satisfied
     """
-    # This routine should be refactored into something more comprehensible
-    # but for now it works.
-
     # Lists of mod time for depend and target files.  Seed the list with a
     # fake very OLD and NEW file (respectively) so the final min/max comparison
     # always works.
-    mtime = dict(depends = [1], targets = [2**31])
-    deptypes = dict(depends=depends, targets=targets)
+    mtimes = dict(depends = [1],
+                  targets = [2**31])
+    deptypes = dict(depends=depends,
+                    targets=targets)
 
     for deptype, deps in deptypes.items():
         if not deps:
@@ -62,12 +73,17 @@ def check_depend(depends=None, targets=None):
 
         Log.debug('Checking %s deps' % deptype)
         for dep in deps:
-            try:
-                func, args, kwargs = dep
-            except (TypeError, ValueError):
-                filename = ContextValue.render(dep)
-                if os.path.exists(filename):
-                    Log.debug('%s mtime is %s' % (filename, time.ctime(os.stat(filename)[ST_MTIME])))
+            else:
+                try:
+                    mtime = dep.mtime
+                except AttributeError:
+                    filename = ContextValue.render(dep)
+                    mtime = (os.stat(filename)[ST_MTIME] if os.path.exists(filename) else None)
+
+                if mtime is not None:
+                    ### WAAAHHHH FIX ME!  do I need a rendered dep for debug output?  Can
+                    # I get the dep name? etc etc
+                    Log.debug('%s mtime is %s' % (, time.ctime(os.stat(filename)[ST_MTIME])))
                     mtime[deptype].append(os.stat(filename)[ST_MTIME])
                     Log.debug('File %s exists' %  filename)
                 else:
@@ -76,15 +92,6 @@ def check_depend(depends=None, targets=None):
                         raise DependFileMissing, 'Depend file %s not found' % filename
                     else:
                         return False
-            else:
-                if func(*args, **kwargs):
-                    Log.debug('Func %s succeeded' % func.func_name)
-                else:
-                    Log.debug('Func %s failed' % func.func_name)
-                    if deptype == 'depends':
-                        raise DependFuncFailure, 'Depend function %s false' % func.func_name
-                    else:
-                        return False                
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
     # created within the same second (particularly for "touch" files).

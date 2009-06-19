@@ -1,5 +1,7 @@
 import re
 import os
+import time
+import stat
 
 import django.template
 import django.conf
@@ -43,7 +45,14 @@ def render_args(func):
     return newfunc
 
 class Value(object):
-    def getval(self): return self.__val
+    def __init__(self, val=None, name=None):
+        self.val = val
+        self.name = name
+        self._mtime = None if val is None else time.time()
+        self._format = None
+
+    def getval(self):
+        return self.__val
 
     def setval(self, val):
         self.__val = val
@@ -51,13 +60,13 @@ class Value(object):
             self.template = django.template.Template(val + '')
         except TypeError:
             self.template = None
+        self._mtime = time.time()
 
     val = property(getval, setval)
 
-    def __init__(self, val=None, name=None):
-        self.val = val
-        self.name = name
-        self.format = None
+    @property
+    def mtime(self):
+        return self._mtime
 
     def __unicode__(self):
         return str(self)
@@ -73,17 +82,21 @@ class Value(object):
                 else:
                     val = newval
         else:
-            if self.format:
-                val = self.format % self.val
+            if self._format:
+                val = self._format % self.val
             else:
                 val = str(self.val)
         return val
 
 class File(Value):
-    def __init__(self, val=None, name=None, basedir=None):
+    def __init__(self, val, name=None, basedir=None):
         # First initialize as a regular Value, but strip spaces for convenience
-        super(File, self).__init__(re.sub(' ', '', val), name)
-        self.basedir = basedir and os.path.abspath(basedir) or os.getcwd()
+        try:
+            val = re.sub(' ', '', val)
+        except:
+            pass
+        super(File, self).__init__(val, name)
+        self.basedir = (os.getcwd() if basedir is None else os.path.abspath(basedir))
 
     def __str__(self):
         """Return rendered object value as a path relative to cwd.  The
@@ -114,6 +127,11 @@ class File(Value):
     rel = property(getrel)
     abs = property(getabs)
 
+    @property
+    def mtime(self):
+        filename = render(self.val)
+        return (os.stat(filename)[stat.ST_MTIME] if os.path.exists(filename) else None)
+
 class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the Context and
     overrides __setitem__ to create an appropriate ContextValue when assigning
@@ -138,6 +156,15 @@ class ContextDict(dict):
         then allow for extensions on key.
         """
         # If the key is not found then look for an extension and try again without the extension
+        if self.valuetype == File:
+            match = re.match(r'([^.]+)(\..+)', key)
+            base, ext = match.groups() if match else (key, '')
+            if base not in self:
+                dict.__setitem__(self, base, File(val=None, name=base, **self.kwargs))
+                
+            baseFile = dict.__getitem__(self, base)
+            return File(val=baseFile.val + ext, name=baseFile.name, basedir=baseFile.basedir)
+            
         if key not in self and self.valuetype == File:
             try:
                 base, ext = re.match(r'([^.]+)(\..+)', key).groups()
@@ -160,7 +187,7 @@ class ContextDict(dict):
             else:
                 dict.__setitem__(self, key, self.valuetype(val, key, **self.kwargs))
                 if key in self.format:
-                    dict.__getitem__(self, key).format = self.format[key]
+                    dict.__getitem__(self, key)._format = self.format[key]
 
     def update(self, vals):
         if hasattr(vals, 'items'):

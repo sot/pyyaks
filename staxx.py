@@ -10,7 +10,6 @@ import shutil
 import time
 import pdb
 
-print 'load1'
 import Ska.Shell
 import Ska.File
 import Ska.Table
@@ -20,7 +19,6 @@ import Ska.astro
 import Ska.Numpy
 import cosmocalc
 
-print 'load2'
 import Task
 from Task import task, chdir, setenv, depends
 import Logging as Log
@@ -62,27 +60,23 @@ def get_options():
     return (opt, args)
 
 opt, args = get_options()
-print 'load3'
 
 # Initialize output logging
 loglevel = dict(debug=Log.DEBUG, task=Log.VERBOSE, summary=Log.INFO, quiet=60)[opt.loglevel]
 logfile = time.strftime(opt.logfile)
 logdir = os.path.dirname(logfile)
 if not os.path.exists(logdir):
-    os.mkdir(logdir)
+    os.makedirs(logdir)
 Log.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
 
-print 'load4'
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
 # to stream shell pexpect output in a way that plays well with Task output.
 bash = Task.bash(loglevel, oneline=True)
 
-print 'load5'
 # Setup CIAO
 ciaoenv = Ska.Shell.getenv('. /soft/ciao/bin/ciao.bash')
 pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
 
-print 'load6'
 # Vars for staxx processing
 # Configuration values
 CFG = ContextDict('cfg')
@@ -151,8 +145,6 @@ Val = VAL.accessor()
 # Set up a couple of functions for convenience
 get_globfiles = render_args(Ska.File.get_globfiles)
 make_local_copy = render_args(Ska.File.make_local_copy)
-
-print 'load7'
 
 def vars_in(contextdict, *vars):
     """Return True if all ``vars`` are elements of ``contextdict``.  This is
