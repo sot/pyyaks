@@ -19,27 +19,27 @@ import Ska.astro
 import Ska.Numpy
 import cosmocalc
 
-import Task
-from Task import task, chdir, setenv, depends
-import Logging as Log
-import ContextValue
-from ContextValue import ContextDict, render, render_first_arg, render_args
+import pyyaks.task
+import pyyaks.logger as Log
+import pyyaks.context
+from pyyaks.task import task, chdir, setenv, depends
+from pyyaks.context import render, ContextDict, render_args
 
 def get_options():
     from optparse import OptionParser
     parser = OptionParser()
     parser.set_defaults()
     parser.add_option("--outdir",
-                      default='data_10kpc',
+                      default='testdata',
                       help="Directory for output data")
     parser.add_option("--logfile",
                       default='logs/%Y-%m-%d/%H:%M:%S',
                       help="File name for output logs in strftime format")
     parser.add_option("--loglevel",
-                      default='task',
+                      default='debug',
                       help="Log level (debug|task|summary|quiet)")
     parser.add_option("--objlist",
-                      default='sources/sdss_gal_stack0.dat',
+                      default='sources/sdss_gal_stack0.dat.small',
                       help="Object list file")
     parser.add_option("--excllist",
                       default='sources/xsrclist4stackexcl.dat',
@@ -53,7 +53,7 @@ def get_options():
                       help="Source aperture units (ecf|kpc|pixel)")
     parser.add_option("--filter",
                       dest = 'filters',
-                      default=[],
+                      default=['_row_ < 1'],
                       action='append',
                       help="Filter expression")
     (opt, args) = parser.parse_args()
@@ -70,8 +70,8 @@ if not os.path.exists(logdir):
 Log.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
 
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
-# to stream shell pexpect output in a way that plays well with Task output.
-bash = Task.bash(loglevel, oneline=True)
+# to stream shell pexpect output in a way that plays well with pyyaks.task output.
+bash = pyyaks.task.bash(loglevel, oneline=True)
 
 # Setup CIAO
 ciaoenv = Ska.Shell.getenv('. /soft/ciao/bin/ciao.bash')
@@ -79,7 +79,7 @@ pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
 
 # Vars for staxx processing
 # Configuration values
-CFG = ContextDict('cfg')
+CFG = pyyaks.context.ContextDict('cfg')
 CFG.update(dict(energy_filter = 'energy=500:7000',
                 aperture_size = opt.aperture_size,
                 aperture_unit = opt.aperture_unit,
@@ -102,63 +102,57 @@ asol_glob   = 'pcad*_asol1.fits*'
 prog_dir = os.path.abspath(os.path.dirname(__file__))
 
 # Define file aliases
-FILE = ContextDict('file', basedir=opt.outdir, valuetype=ContextValue.File)
+FILE = pyyaks.context.ContextDict('file', basedir=opt.outdir)
 FILE.update(dict(
-    resources_dir = 'resources / ',
-    index_template ='resources / index_template',
-    pyaxx =         'resources / pyaxx',
-    obs_dir =       'obs{{src.obsid}} / ',
-    obs_asol =      'obs{{src.obsid}} / asol',
-    ccd_dir =       'obs{{src.obsid}} / ccd{{src.ccdid}} /',
-    ccd_evt =       'obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2',
-    ccd_expmap =    'obs{{src.obsid}} / ccd{{src.ccdid}} / expmap',
-    ccd_src_dir =   'obs{{src.obsid}} / ccd{{src.ccdid}} / {{src.xdat_id}} /',
-    src_dir =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / ',
-    index =         '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / index',
-    asol =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / asol',
-    evt =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_evt2',
-    cut_evt =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_cut_evt2',
-    expmap =        '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap',
-    expmap_cut =    '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_cut',
-    expmap_fill =   '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / expmap_fill',
-    src =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / src',
-    bkg =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / bkg',
-    cut =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / cut',
-    fill =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / fill',
-    ds9 =           '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / ds9',
-    apphot =        '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot',
-    apphot_exp =    '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / apphot_exp',
-    src_img =       '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_src_img',
-    fill_img =      '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / acis_fill_img',
-    info =          '{{src.xdat_id}} / obs{{src.obsid}} / ccd{{src.ccdid}} / info'))
+    resources_dir = 'resources/',
+    index_template ='resources/index_template',
+    pyaxx =         'resources/pyaxx',
+    obs_dir =       'obs{{src.obsid}}/',
+    obs_asol =      'obs{{src.obsid}}/asol',
+    ccd_dir =       'obs{{src.obsid}}/ccd{{src.ccdid}}/',
+    ccd_evt =       'obs{{src.obsid}}/ccd{{src.ccdid}}/acis_evt2',
+    ccd_expmap =    'obs{{src.obsid}}/ccd{{src.ccdid}}/expmap',
+    ccd_src_dir =   'obs{{src.obsid}}/ccd{{src.ccdid}}/{{src.xdat_id}}/',
+    src_dir =       '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/',
+    index =         '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/index',
+    asol =          '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/asol',
+    evt =           '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/acis_evt2',
+    cut_evt =       '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/acis_cut_evt2',
+    expmap =        '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/expmap',
+    expmap_cut =    '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/expmap_cut',
+    expmap_fill =   '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/expmap_fill',
+    src =           '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/src',
+    bkg =           '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/bkg',
+    cut =           '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/cut',
+    fill =          '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/fill',
+    ds9 =           '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/ds9',
+    apphot =        '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/apphot',
+    apphot_exp =    '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/apphot_exp',
+    src_img =       '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/acis_src_img',
+    fill_img =      '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/acis_fill_img',
+    info =          '{{src.xdat_id}}/obs{{src.obsid}}/ccd{{src.ccdid}}/info'))
 File = FILE.accessor()
 
 # Define src vars
-SRC = ContextDict('src')
-SRC.format.update(dict(ra='%.5f',
-                       dec='%.4f'))
+SRC = pyyaks.context.ContextDict('src')
+SRC['ra'].format = '%.5f'
+SRC['dec'].format = '%.4f'
 Src = SRC.accessor()
 
 VAL = ContextDict('val')
 Val = VAL.accessor()
 
 # Set up a couple of functions for convenience
-get_globfiles = render_args(Ska.File.get_globfiles)
-make_local_copy = render_args(Ska.File.make_local_copy)
+get_globfiles = render_args()(Ska.File.get_globfiles)
+make_local_copy = render_args()(Ska.File.make_local_copy)
 
-def vars_in(contextdict, *vars):
-    """Return True if all ``vars`` are elements of ``contextdict``.  This is
-    a convenience function for checking variables dependence in tasks
-    """
-    return all(var in contextdict for var in vars)
-
-@render_first_arg
+@pyyaks.context.render_args(1)
 def make_dir(dir_):
     """Make a directory if it doesn't exist."""
     if not os.path.isdir(dir_):
         os.makedirs(dir_)
         if not os.path.isdir(dir_):
-            raise Task.TaskFailure('Failed to make directory %s' % dir_)
+            raise pyyaks.task.TaskFailure('Failed to make directory %s' % dir_)
         Log.verbose('Made directory ' + dir_)
         
 #####################################################################################
@@ -182,8 +176,8 @@ def make_xdat_to_src_link():
 ###################################################################################
 @task()
 def restore_src(filename):
-    Log.verbose('Restoring from %s' % filename)
     if os.path.exists(filename):
+        Log.verbose('Restoring from %s' % filename)
         SRC.update(pickle.load(open(filename, 'r')))
         
 ###################################################################################
@@ -201,7 +195,7 @@ def store_src(filename):
 def copy_resources():
     make_dir(File['resources_dir'])
     for name in ('pyaxx.css', 'index_template.html'):
-        Log.verbose('Copying %s to resources')
+        Log.verbose('Copying %s to resources' % name)
         shutil.copy(os.path.join(prog_dir, name), File[name])
 
 ###################################################################################
@@ -255,8 +249,9 @@ def get_obs_asol_files():
 @task()
 @depends(depends=[FILE['ccd_evt.fits'],
                   FILE['obs_asol.lis'],
-                  (vars_in, (SRC, 'ra', 'dec'), {})],
-         targets=[(vars_in, (SRC, 'x', 'y', 'ccdid', 'theta', 'phi'), {})])
+                  SRC['ra'],
+                  SRC['dec']],
+         targets=[SRC[x] for x in ('x', 'y', 'theta', 'phi')])
 @setenv(ciaoenv)
 def set_coords():
     kwargs = dict(evtfile=File['ccd_evt.fits'],
@@ -274,8 +269,8 @@ def set_coords():
 
 ###################################################################################
 @task()
-@depends(depends=[(vars_in, (SRC, 'ra', 'dec'), {})],
-         targets=[(vars_in, (SRC, 'gal_nh'), {})])
+@depends(depends=[SRC[x] for x in ('ra', 'dec')],
+         targets=[SRC['gal_nh']])
 @setenv(ciaoenv)
 def set_gal_nh():
     Src.gal_nh = Ska.CIAO.colden(Src.ra, Src.dec)
@@ -283,8 +278,8 @@ def set_gal_nh():
 
 ###################################################################################
 @task()
-@depends(depends=[(vars_in, (SRC, 'theta', 'phi', 'z'), {})],
-         targets=[(vars_in, (SRC, 'src_rad', 'excl_rad', 'src_rad_ecf', 'excl_rad_ecf'), {})])
+@depends(depends=[SRC[x] for x in ('theta', 'phi', 'z')],
+         targets=[SRC[x] for x in ('src_rad', 'excl_rad', 'src_rad_ecf', 'excl_rad_ecf')])
 @setenv(ciaoenv)
 def get_apphot_ecf_rad():
     ecf_kwargs = dict(energy=Cfg.psf_energy,
@@ -324,11 +319,12 @@ def get_apphot_ecf_rad():
 
 ###################################################################################
 @task()
-@depends(depends=[(vars_in, (SRC, 'src_rad', 'excl_rad', 'x', 'y'), {})],
+@depends(depends=[SRC[x] for x in ('src_rad', 'excl_rad', 'x', 'y')],
          targets=[FILE['src.reg'],
                   FILE['bkg.reg'],
                   FILE['cut.reg'],
-                  (vars_in, (SRC, 'ann_r0', 'ann_r1'), {})])
+                  SRC['ann_r0'],
+                  SRC['ann_r1']])
 @setenv(ciaoenv)
 def make_apphot_reg_files(excl_srcs=None):
     """Make CIAO region files for aperture photometry
@@ -633,7 +629,7 @@ def make_expmap_fill():
                   FILE['apphot_exp.fits.gz']],
          targets=[FILE['apphot.pickle'],
                   FILE['apphot_exp.pickle'],
-                  (vars_in, (SRC, 'src_area'), {})])
+                  SRC['src_area']])
 def write_apphot_pickle():
     for name in ('apphot', 'apphot_exp'):
         rows = Ska.Table.read_table(name + '.fits.gz')
@@ -643,8 +639,8 @@ def write_apphot_pickle():
 
 #####################################################################################
 @task()
-@depends(depends=[(vars_in, (SRC, 'src_area'), {})],
-         targets=[(vars_in, (SRC, 'src_area_ratio'), {})])
+@depends(depends=[SRC['src_area']],
+         targets=[SRC['src_area_ratio']])
 def set_src_area_ratio():
     nom_area = math.pi * Src.src_rad**2
     Src.src_area_ratio = Src.src_area / nom_area
@@ -678,9 +674,10 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     pos = Ska.astro.Equatorial(Src.ra, Src.dec)
     pos.delim = ''
     Src.xdat_id = re.sub(r'\..*', '', pos.ra_hms) + re.sub(r'\..*', '', pos.dec_dms) 
+    print Src.ra, type(Src.ra), Src['ra']
     Src.xdat_id = "%.4f_%.4f" % (Src.ra, Src.dec)
 
-    Task.start(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
+    pyyaks.task.start(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
 
     restore_src(File['info.pickle'])
 
@@ -697,6 +694,7 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     get_obs_asol_files()
 
     # Gather some numbers
+    print repr(SRC['ra']), SRC['ra'].mtime, Src.ra, type(Src.ra), Src['ra']
     set_coords()
     set_gal_nh()
     get_apphot_ecf_rad()
@@ -720,5 +718,5 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     
     store_src(File['info.pickle'])
     
-    Task.end(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
+    pyyaks.task.end(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
 

@@ -1,12 +1,12 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
+import pdb
 import sys
 import os
 import re
 import time
-from stat import ST_MTIME # Really constants 7 and 8
 import traceback
-import ContextValue
-import Logging as Log
+import pyyaks.context
+import pyyaks.logger as Log
 import Shell
 
 # Module var for maintaining status of current set of tasks
@@ -73,30 +73,25 @@ def check_depend(depends=None, targets=None):
 
         Log.debug('Checking %s deps' % deptype)
         for dep in deps:
-            else:
-                try:
-                    mtime = dep.mtime
-                except AttributeError:
-                    filename = ContextValue.render(dep)
-                    mtime = (os.stat(filename)[ST_MTIME] if os.path.exists(filename) else None)
-
-                if mtime is not None:
-                    ### WAAAHHHH FIX ME!  do I need a rendered dep for debug output?  Can
-                    # I get the dep name? etc etc
-                    Log.debug('%s mtime is %s' % (, time.ctime(os.stat(filename)[ST_MTIME])))
-                    mtime[deptype].append(os.stat(filename)[ST_MTIME])
-                    Log.debug('File %s exists' %  filename)
+            if not hasattr(dep, 'mtime'):
+                dep = pyyaks.context.Value(val=dep, name=dep, basedir='.')
+                
+            mtime = dep.mtime                
+            if mtime is None:
+                print dep.name, repr(dep)
+                Log.debug('File/value %s does not exist' %  dep.name)
+                if deptype == 'depends':
+                    raise DependFileMissing('Depend file/value %s not found' % dep.name)
                 else:
-                    Log.debug('File %s does not exist' %  filename)
-                    if deptype == 'depends':
-                        raise DependFileMissing, 'Depend file %s not found' % filename
-                    else:
-                        return False
+                    return False
+            else:
+                Log.debug('File/Value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
+                mtimes[deptype].append(mtime)
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
     # created within the same second (particularly for "touch" files).
-    min_targets = min(mtime['targets'])
-    max_depends = max(mtime['depends'])
+    min_targets = min(mtimes['targets'])
+    max_depends = max(mtimes['depends'])
     Log.debug('min targets time=%s   max depeends time=%s'
               % (time.ctime(min_targets), time.ctime(max_depends)))
     return min_targets >= max_depends
@@ -134,7 +129,7 @@ class chdir(TaskDecor):
         
     def setup(self):
         self.origdir = os.getcwd()
-        newdir = ContextValue.render(self.newdir)
+        newdir = pyyaks.context.render(self.newdir)
         os.chdir(newdir)
         Log.verbose('Changed to directory "%s"' % newdir)
 
@@ -248,7 +243,7 @@ def bash(loglevel, oneline=False):
         logfile = (loglevel <= Log.VERBOSE) and VerboseFileHandle() or None
         cmdlines = [x.strip() for x in cmd.splitlines()]
         sep = ' ' if oneline else os.linesep
-        cmd = ContextValue.render(sep.join(cmdlines))
+        cmd = pyyaks.context.render(sep.join(cmdlines))
         return Shell.bash(cmd, logfile=logfile, **kwargs)
     return newbash
 

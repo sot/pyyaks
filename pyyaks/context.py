@@ -9,7 +9,6 @@ import django.conf
 import Ska.File
 
 Context = {}
-Django_tag = re.compile(r'{[%{]')
 
 try:
     django.conf.settings.configure()
@@ -18,33 +17,44 @@ except RuntimeError, msg:
     pass
 
 def render(s):
-    """Convenience function to create an anonymous ContextValue and then render it."""
+    """Convenience function to create an anonymous Value and then render it."""
     if isinstance(s, Value):
         return str(s)
     else:
         return str(Value(s))
 
-def render_first_arg(func):
-    """Wrap func so that its first arg is rendered"""
-    def newfunc(*args, **kwarg):
-        newargs = list(args)
-        if len(newargs) > 0:
-            newargs[0] = render(newargs[0])
-        return func(*newargs, **kwarg)
+def render_args(*argids):
+    """Decorate a function so that the specified arguments are rendered via
+    context.render() before being passed to function.  Keyword arguments are
+    unaffected.
+
+    Examples::
     
-    newfunc.func_name = func.func_name
-    newfunc.func_doc = func.func_doc
-    return newfunc
+      # Apply render() to all 3 args
+      @context.render_args()
+      def func(arg1, arg2, arg3):
+          return arg1, arg2, arg3
 
-def render_args(func):
-    """Wrap func so that all args rendered"""
-    def newfunc(*args, **kwarg):
-        newargs = [render(x) for x in args]
-        return func(*newargs, **kwarg)
+      # Render just arg1
+      @context.render_args(1)
+      def func(arg1, arg2, arg3):
+          return arg1, arg2, arg3
 
-    newfunc.func_name = func.func_name
-    newfunc.func_doc = func.func_doc
-    return newfunc
+      # Render arg1 and arg3
+      @context.render_args(1, 3)
+      def func(arg1, arg2, arg3):
+          return arg1, arg2, arg3
+    """
+    def decorate(func):
+        def newfunc(*args, **kwargs):
+            ids = [x-1 for x in argids] if argids else range(len(args))
+            newargs = [(render(x) if i in ids else x) for (i, x) in enumerate(args)]
+            return func(*newargs, **kwargs)
+
+        newfunc.func_name = func.func_name
+        newfunc.func_doc = func.func_doc
+        return newfunc
+    return decorate
 
 class Value(object):
     def __init__(self, val=None, name=None, basedir=None, format=None, ext=None):
@@ -61,6 +71,10 @@ class Value(object):
             self.format = format
 
         self.ext = ext
+
+    def clear(self):
+        self._val = None
+        self._mtime = None
 
     def getval(self):
         return self._val
@@ -84,7 +98,8 @@ class Value(object):
     
     def __str__(self):
         # pdb.set_trace()
-        val = self._val
+        strval = val = self._val
+        Django_tag = re.compile(r'{[%{]')
         try:                            
             # Following line will give TypeError unless val is string-like
             while (Django_tag.search(val)):
@@ -99,10 +114,9 @@ class Value(object):
             strval = (self.format or '%s') % val
 
         if self.basedir:
-            if not os.path.isabs(strval):
-                strval = os.path.join(self.basedir, strval)
-            strval = Ska.File.relpath(strval + ('.' + self.ext if self.ext else ''))
-
+            # Note that os.path.join(a,b) returns b is b is already absolute
+            strval = Ska.File.relpath(os.path.join(self.basedir, strval)
+                                      + ('.' + self.ext if self.ext else ''))
         return strval
 
     @property
@@ -117,7 +131,10 @@ class Value(object):
         """Any unfound attribute lookup is interpreted as a file extension.
         A new Value object with that extension is returned.
         """
-        return Value(val=self, ext=ext)
+        if ext.startswith('__'):
+            raise AttributeError
+        else:
+            return Value(val=self, ext=ext)
 
 class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the Context and
@@ -145,7 +162,10 @@ class ContextDict(dict):
 
         # Autogenerate an entry for key
         if base not in self:
-            dict.__setitem__(self, base, Value(val=None, name=base, basedir=basedir))
+            value = Value(val=None, name=base, basedir=self.basedir)
+            if base=='ra':
+                print 'Autogen ', repr(value), ' with name=', base, 'basedir=', self.basedir
+            dict.__setitem__(self, base, value)
 
         baseValue = dict.__getitem__(self, base)
         return (Value(baseValue, ext=ext) if ext else baseValue)
@@ -155,7 +175,12 @@ class ContextDict(dict):
         if key in self:
             dict.__getitem__(self, key).val = val
         else:
-            dict.__setitem__(self, key, Value(val=val, name=key, basedir=self.basedir))
+            if '.' in key:
+                raise ValueError('Dot not allowed in ContextDict key ' + key)
+            value = Value(val=val, name=key, basedir=self.basedir)
+            if key == 'ra':
+                print 'Creating value', repr(value), ' with name=', key, 'val=', val, 'basedir=', self.basedir
+            dict.__setitem__(self, key, value)
 
     def update(self, vals):
         if hasattr(vals, 'items'):
@@ -168,6 +193,10 @@ class ContextDict(dict):
 
     def __repr__(self):
         return str(dict((key, self[key].val) for key in self))
+
+    def clear(self):
+        for key in self:
+            dict.__getitem__(self, key).clear()
 
 class ContextDictAccessor(object):
     """Very simple mechanism to access ContextDict values via object attribute
@@ -191,10 +220,10 @@ class ContextDictAccessor(object):
         object.__setattr__(self, '_contextdict', contextdict)
 
     def __getattr__(self, name):
-        try:
-            return self._contextdict[name].rel
-        except AttributeError:
+        if self._contextdict.basedir is None:
             return self._contextdict[name].val
+        else:
+            return self._contextdict[name].rel
 
     def __setattr__(self, name, value):
         self._contextdict[name] = value
