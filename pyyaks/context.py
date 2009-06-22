@@ -7,6 +7,7 @@ import pdb
 import django.template
 import django.conf
 import Ska.File
+import pyyaks.logger as logger
 
 Context = {}
 
@@ -80,8 +81,11 @@ class Value(object):
         return self._val
 
     def setval(self, val):
-        self._val = val
-        self._mtime = time.time()
+        if isinstance(val, Value):
+            self.__init__(val, ext=val.ext)
+        else:
+            self._val = val
+            self._mtime = time.time()
 
     val = property(getval, setval)
 
@@ -97,7 +101,6 @@ class Value(object):
         return str(self)
     
     def __str__(self):
-        # pdb.set_trace()
         strval = val = self._val
         Django_tag = re.compile(r'{[%{]')
         try:                            
@@ -131,6 +134,8 @@ class Value(object):
         """Any unfound attribute lookup is interpreted as a file extension.
         A new Value object with that extension is returned.
         """
+        # pickle looks for some specific attributes beginning with __ and expects
+        # AttributeError if they are not provided by class.
         if ext.startswith('__'):
             raise AttributeError
         else:
@@ -163,8 +168,7 @@ class ContextDict(dict):
         # Autogenerate an entry for key
         if base not in self:
             value = Value(val=None, name=base, basedir=self.basedir)
-            if base=='ra':
-                print 'Autogen ', repr(value), ' with name=', base, 'basedir=', self.basedir
+            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
             dict.__setitem__(self, base, value)
 
         baseValue = dict.__getitem__(self, base)
@@ -173,13 +177,15 @@ class ContextDict(dict):
     def __setitem__(self, key, val):
         # If ContextValue was already init'd then just update val
         if key in self:
-            dict.__getitem__(self, key).val = val
+            value = dict.__getitem__(self, key)
+            print 'Setting value', repr(value), ' with name=', key, 'val=', val, 'basedir=', self.basedir
+            value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
             value = Value(val=val, name=key, basedir=self.basedir)
-            if key == 'ra':
-                print 'Creating value', repr(value), ' with name=', key, 'val=', val, 'basedir=', self.basedir
+            # print 'Creating value with name= val= basedir=%s', repr(value), key, val, self.basedir
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), key, str(val), self.basedir))
             dict.__setitem__(self, key, value)
 
     def update(self, vals):

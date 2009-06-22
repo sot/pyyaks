@@ -25,8 +25,6 @@ def emit_without_newline(self, record):
 def init(stdoutlevel=logging.INFO,
          filelevel=logging.INFO,
          filename=None,
-         # format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-         # format="%(levelname)s - %(message)s"
          format="%(message)s"
          ):
 
