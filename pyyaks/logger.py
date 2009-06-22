@@ -1,6 +1,10 @@
 import logging
 import types
 
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 def emit_without_newline(self, record):
     """
     This is a copy of logging.StreamHandler.emit but without the
@@ -65,13 +69,14 @@ CRITICAL = logging.CRITICAL
 # Copy the original StreamHandler emit function
 emit_with_newline = logging.StreamHandler.emit
 
-#create logger at root level
-logger = logging.getLogger("")
-logger.setLevel(logging.DEBUG)
-
 # Add a VERBOSE level and define methods to use it
 logging.addLevelName(15, 'VERBOSE')
 logging.verbose = lambda msg: logger.log(VERBOSE, msg)
+
+#create logger at root level
+logger = logging.getLogger("pyyaks")
+logger.addHandler(NullHandler())
+logger.setLevel(logging.DEBUG)
 logger.verbose = logging.verbose
 
 # Define Logging methods that allow for disabling automatic emitting of newline

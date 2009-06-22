@@ -21,7 +21,7 @@ import Ska.Numpy
 import cosmocalc
 
 import pyyaks.task
-import pyyaks.logger as Log
+import pyyaks.logger
 import pyyaks.context
 from pyyaks.task import task, chdir, setenv, depends
 from pyyaks.context import render, ContextDict, render_args
@@ -63,12 +63,16 @@ def get_options():
 opt, args = get_options()
 
 # Initialize output logging
-loglevel = dict(debug=Log.DEBUG, task=Log.VERBOSE, summary=Log.INFO, quiet=60)[opt.loglevel]
+loglevel = dict(debug=pyyaks.logger.DEBUG,
+                task=pyyaks.logger.VERBOSE,
+                summary=pyyaks.logger.INFO,
+                quiet=60)[opt.loglevel]
 logfile = time.strftime(opt.logfile)
 logdir = os.path.dirname(logfile)
 if not os.path.exists(logdir):
     os.makedirs(logdir)
-Log.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
+pyyaks.logger.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
+logger = pyyaks.logger.logger
 
 # Create bash wrapper around Shell.bash.  This sets up a file-like object
 # to stream shell pexpect output in a way that plays well with pyyaks.task output.
@@ -154,7 +158,7 @@ def make_dir(dir_):
         os.makedirs(dir_)
         if not os.path.isdir(dir_):
             raise pyyaks.task.TaskFailure('Failed to make directory %s' % dir_)
-        Log.verbose('Made directory ' + dir_)
+        logger.verbose('Made directory ' + dir_)
         
 #####################################################################################
 # Task definitions
@@ -172,19 +176,19 @@ def make_xdat_and_src_dirs():
 def make_xdat_to_src_link():
     if not os.path.exists(File['ccd_src_dir']):
         os.symlink(File['src_dir'], File['ccd_src_dir'])
-        Log.verbose('Made symlink %s -> %s' % (File['src_dir'], File['ccd_src_dir']))
+        logger.verbose('Made symlink %s -> %s' % (File['src_dir'], File['ccd_src_dir']))
 
 ###################################################################################
 @task()
 def restore_src(filename):
     if os.path.exists(filename):
-        Log.verbose('Restoring from %s' % filename)
+        logger.verbose('Restoring from %s' % filename)
         SRC.update(pickle.load(open(filename, 'r')))
         
 ###################################################################################
 @task()
 def store_src(filename):
-    Log.verbose('Storing to %s' % filename)
+    logger.verbose('Storing to %s' % filename)
     pickle.dump(SRC, open(filename, 'w'))
 
 ###################################################################################
@@ -196,7 +200,7 @@ def store_src(filename):
 def copy_resources():
     make_dir(File['resources_dir'])
     for name in ('pyaxx.css', 'index_template.html'):
-        Log.verbose('Copying %s to resources' % name)
+        logger.verbose('Copying %s to resources' % name)
         shutil.copy(os.path.join(prog_dir, name), File[name])
 
 ###################################################################################
@@ -205,7 +209,7 @@ def copy_resources():
 def get_ccd_evt_fits():
     f = get_globfiles(os.path.join(input_dir, evt2_glob))[0]
     make_local_copy(f, File['ccd_evt.fits'], linkabs=True)
-    Log.verbose('Made local copy %s -> %s' % (render(f), File['ccd_evt.fits']))
+    logger.verbose('Made local copy %s -> %s' % (render(f), File['ccd_evt.fits']))
 
 
 ###################################################################################
@@ -214,7 +218,7 @@ def get_ccd_evt_fits():
 def get_ccd_expmap_fits():
     f = get_globfiles(os.path.join(input_dir, expmap_glob))[0]
     make_local_copy(f, File['ccd_expmap.fits'], linkabs=True)
-    Log.verbose('Made local copy %s -> %s' % (render(f), File['ccd_expmap.fits']))
+    logger.verbose('Made local copy %s -> %s' % (render(f), File['ccd_expmap.fits']))
 
 ###################################################################################
 @task()
@@ -222,7 +226,7 @@ def get_ccd_expmap_fits():
          targets=[FILE['evt.fits']])
 def get_evt_fits():
     make_local_copy(File['ccd_evt.fits'], File['evt.fits'])
-    Log.verbose('Made local copy %s -> %s' % (File['ccd_evt.fits'], File['evt.fits']))
+    logger.verbose('Made local copy %s -> %s' % (File['ccd_evt.fits'], File['evt.fits']))
 
 ###################################################################################
 @task()
@@ -230,7 +234,7 @@ def get_evt_fits():
          targets=[FILE['expmap.fits']])
 def get_expmap_fits():
     make_local_copy(File['ccd_expmap.fits'], File['expmap.fits'])
-    Log.verbose('Made local copy %s -> %s' % (File['ccd_expmap.fits'], File['expmap.fits']))
+    logger.verbose('Made local copy %s -> %s' % (File['ccd_expmap.fits'], File['expmap.fits']))
 
 ###################################################################################
 @task()
@@ -240,11 +244,11 @@ def get_obs_asol_files():
     obs_copies = [File['obs_asol'] + '_%d.fits' % i for i in range(len(files))]
     for f, l in zip(files, obs_copies):
         make_local_copy(f, l)
-        Log.verbose('Made local copy %s -> %s' % (render(f), render(l)))
+        logger.verbose('Made local copy %s -> %s' % (render(f), render(l)))
 
     obs_copies_base = [os.path.basename(x) for x in obs_copies]
     open(File['obs_asol.lis'], 'w').write('\n'.join(obs_copies_base))
-    Log.verbose('Made %s' % File['obs_asol.lis'])
+    logger.verbose('Made %s' % File['obs_asol.lis'])
 
 ###################################################################################
 @task()
@@ -258,7 +262,7 @@ def set_coords():
     kwargs = dict(evtfile=File['ccd_evt.fits'],
                   asolfile='@' + File['obs_asol.lis'],
                   pos=[Src.ra, Src.dec], coordsys='cel')
-    Log.verbose('Running dmcoords(%s)' % str(kwargs))
+    logger.verbose('Running dmcoords(%s)' % str(kwargs))
     coords = Ska.CIAO.dmcoords(**kwargs)
     if 'ccdid' not in SRC:
         Src.ccdid = coords['chip_id']
@@ -266,7 +270,7 @@ def set_coords():
     Src.y = coords['y']              # sky pixels
     Src.theta = coords['theta']      # arcmin
     Src.phi = coords['phi']          # deg
-    Log.debug('dmcoords output: %s' % str(coords))
+    logger.debug('dmcoords output: %s' % str(coords))
 
 ###################################################################################
 @task()
@@ -275,7 +279,7 @@ def set_coords():
 @setenv(ciaoenv)
 def set_gal_nh():
     Src.gal_nh = Ska.CIAO.colden(Src.ra, Src.dec)
-    Log.verbose('Got colden = %.2f' % Src.gal_nh)
+    logger.verbose('Got colden = %.2f' % Src.gal_nh)
 
 ###################################################################################
 @task()
@@ -286,7 +290,7 @@ def get_apphot_ecf_rad():
     ecf_kwargs = dict(energy=Cfg.psf_energy,
                       theta=Src.theta, phi=Src.phi)
     
-    Log.verbose('Calculating apertures for theta=%.2f arcmin phi=%.1f degrees energy=%.2f keV'
+    logger.verbose('Calculating apertures for theta=%.2f arcmin phi=%.1f degrees energy=%.2f keV'
              % (Src.theta, Src.phi, Cfg.psf_energy))
     for par, size, unit in (('src_rad', Cfg.aperture_size, Cfg.aperture_unit),
                             ('excl_rad', Cfg.excl_rad_ecf, 'ecf')):
@@ -305,7 +309,7 @@ def get_apphot_ecf_rad():
 
         # If radius is below allowed min then adjust
         if rad_pix < Cfg.min_src_rad:
-            Log.info('Extraction radius %.2f pixels too small - setting to %.2f' %
+            logger.info('Extraction radius %.2f pixels too small - setting to %.2f' %
                      (rad_pix, Cfg.min_src_rad))
             rad_pix = Cfg.min_src_rad
             rad_arcsec = rad_pix * Cfg.arcsec_per_pixel
@@ -315,7 +319,7 @@ def get_apphot_ecf_rad():
         Src[par] = rad_pix
         Src[par + '_ecf'] = ecf
 
-        Log.verbose("%s aperture_size=%.2f (%s) radius=%.2f pixels ecf=%.2f"
+        logger.verbose("%s aperture_size=%.2f (%s) radius=%.2f pixels ecf=%.2f"
                     % (par, size, unit, rad_pix, ecf))
 
 ###################################################################################
@@ -335,7 +339,7 @@ def make_apphot_reg_files(excl_srcs=None):
     """
     src_rad = Src.src_rad
     excl_rad = Src.excl_rad
-    Log.debug('Src, excl ECF radius is %.2f, %.2f' % (src_rad, excl_rad))
+    logger.debug('Src, excl ECF radius is %.2f, %.2f' % (src_rad, excl_rad))
 
     # Background annulus radii
     Src.ann_r0 = excl_rad * Cfg.bkg_ann_mul0
@@ -344,7 +348,7 @@ def make_apphot_reg_files(excl_srcs=None):
     # Stupidly slow but use this for now until a persistent dmcoords interface is written
     sky_coords = []
     for chipx, chipy in [(8,8), (8,1016), (1016,1016), (1016,8)]:
-        Log.verbose("Running dmcoords for chip = (acis-%d, %d, %d)" %
+        logger.verbose("Running dmcoords for chip = (acis-%d, %d, %d)" %
                   (Src.ccdid, chipx, chipy))
         coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'],
                                    asolfile='@' + File['obs_asol.lis'],
@@ -352,7 +356,7 @@ def make_apphot_reg_files(excl_srcs=None):
         sky_coords.extend([coords['x'], coords['y']])
 
     chip_reg = "polygon(%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f)" % tuple(sky_coords)
-    Log.debug('Determined chip region %s' % chip_reg)
+    logger.debug('Determined chip region %s' % chip_reg)
 
     # Distance from source to excl_srcs in pixels.
     if excl_srcs is not None:
@@ -361,7 +365,7 @@ def make_apphot_reg_files(excl_srcs=None):
     def make_reg_file(filename, region_str, r0=None, r1=None, excl_srcs=None):
         if os.path.exists(filename):
             return
-        Log.verbose("Creating region file %s" % filename)
+        logger.verbose("Creating region file %s" % filename)
         region = "# Region file format: CIAO version 1.0\n";
         region += "%s*%s" % (chip_reg, region_str)
 
@@ -375,14 +379,14 @@ def make_apphot_reg_files(excl_srcs=None):
                 try:
                     coords = dict(x = excl_src['x'], y = excl_src['y'])
                 except IndexError:      # numpy throws IndexError not KeyError in this case
-                    Log.verbose("Calculating sky x,y for excluded source at RA, dec = %.4f, %.4f" %
+                    logger.verbose("Calculating sky x,y for excluded source at RA, dec = %.4f, %.4f" %
                              (excl_src['ra'], excl_src['dec']))
                     coords = Ska.CIAO.dmcoords(evtfile=File['ccd_evt.fits'],
                                                asolfile='@' + File['obs_asol.lis'],
                                                pos=[excl_src['ra'], excl_src['dec']], coordsys='cel')
                 region += "-circle(%.2f,%.2f,%.2f)" % (coords['x'], coords['y'], excl_rad)
 
-        Log.debug("region=\n%s" % region)
+        logger.debug("region=\n%s" % region)
         open(filename, 'w').write(region + "\n")
 
     make_reg_file(File['src.reg'],
@@ -408,7 +412,7 @@ def make_ds9_reg_files():
         line = re.sub(r'-', '\n-', line)
         ds9.write(line)
     ds9.close()
-    Log.verbose('Made ds9 region file %s' % File['ds9.reg'])
+    logger.verbose('Made ds9 region file %s' % File['ds9.reg'])
 
 #####################################################################################
 @task()
@@ -463,7 +467,7 @@ def make_src_img_reg():
     src_reg = open(File['src.reg']).read()
     bkg_reg = open(File['bkg.reg']).read()
     open(File['src_img.reg'], 'w').write(src_reg + bkg_reg)
-    Log.verbose('Created src_img_reg file %s' % File['src_img.reg'])
+    logger.verbose('Created src_img_reg file %s' % File['src_img.reg'])
 
 #####################################################################################
 def _make_cut_img(infile, filetype, outfits, outjpg, regfile):
@@ -536,7 +540,7 @@ def _make_cut_img(infile, filetype, outfits, outjpg, regfile):
 def make_src_img():
     _make_cut_img(File['cut_evt.fits'], 'event', File['src_img.fits'],
                   File['src_img.jpg'], File['src_img.reg'])
-    Log.verbose('Made src_img file %s' % File['src_img.jpg'])
+    logger.verbose('Made src_img file %s' % File['src_img.jpg'])
 
 #####################################################################################
 @task()
@@ -549,7 +553,7 @@ def make_src_img():
 def make_expmap_cut_img():
     _make_cut_img(File['expmap.fits'], 'image', File['expmap_cut.fits'],
                   File['expmap_cut.jpg'], File['src_img.reg'])
-    Log.verbose('Made expmap_cut_img file %s' % File['expmap_cut.jpg'])
+    logger.verbose('Made expmap_cut_img file %s' % File['expmap_cut.jpg'])
 
 #####################################################################################
 @task()
@@ -570,11 +574,11 @@ def make_fill_reg():
     try:
         poly = re_poly.search(bkg).group()
     except AttributeError:
-        Log.error('Could not find polygon in region file')
+        logger.error('Could not find polygon in region file')
         sys.exit(1)
     print >>fill, '!%s' % poly
     fill.close()
-    Log.verbose('Made fill.reg file %s' % File['fill.reg'])
+    logger.verbose('Made fill.reg file %s' % File['fill.reg'])
 
 #####################################################################################
 @task()
@@ -621,7 +625,7 @@ def make_expmap_fill():
          clobber=yes""" % (tmp1.name, tmp2.name))
     _make_cut_img(tmp2.name, 'image', File['expmap_fill.fits'],
                   File['expmap_fill.jpg'], File['src_img.reg'])
-    Log.verbose('Made expmap_fill_img file %s' % File['expmap_fill.jpg'])
+    logger.verbose('Made expmap_fill_img file %s' % File['expmap_fill.jpg'])
 
 #####################################################################################
 @task()
@@ -636,7 +640,7 @@ def write_apphot_pickle():
         rows = Ska.Table.read_table(name + '.fits.gz')
         pickle.dump(rows, open(name + '.pickle', 'w'))
         Src.src_area = rows[0]['AREA']
-        Log.verbose('Wrote %s.pickle' % name)
+        logger.verbose('Wrote %s.pickle' % name)
 
 #####################################################################################
 @task()
@@ -645,7 +649,7 @@ def write_apphot_pickle():
 def set_src_area_ratio():
     nom_area = math.pi * Src.src_rad**2
     Src.src_area_ratio = Src.src_area / nom_area
-    Log.verbose("Set Src.src_area_ratio = %.3f" % Src.src_area_ratio)
+    logger.verbose("Set Src.src_area_ratio = %.3f" % Src.src_area_ratio)
 
 #####################################################################################
 @task(always=True)
@@ -655,7 +659,7 @@ def set_src_area_ratio():
 def make_index_html():
     index_html = render(open(File['index_template.html']).read())
     open(File['index.html'], 'w').write(index_html)
-    Log.verbose('Created report page %s' % File['index.hmtl'])
+    logger.verbose('Created report page %s' % File['index.hmtl'])
 
 #####################################################################################
 # Main processing loop
@@ -675,7 +679,6 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     pos = Ska.astro.Equatorial(Src.ra, Src.dec)
     pos.delim = ''
     Src.xdat_id = re.sub(r'\..*', '', pos.ra_hms) + re.sub(r'\..*', '', pos.dec_dms) 
-    print Src.ra, type(Src.ra), Src['ra']
     Src.xdat_id = "%.4f_%.4f" % (Src.ra, Src.dec)
 
     pyyaks.task.start(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
@@ -695,7 +698,6 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     get_obs_asol_files()
 
     # Gather some numbers
-    print repr(SRC['ra']), SRC['ra'].mtime, Src.ra, type(Src.ra), Src['ra']
     set_coords()
     set_gal_nh()
     get_apphot_ecf_rad()

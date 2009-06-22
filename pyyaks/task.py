@@ -7,8 +7,10 @@ import time
 import traceback
 
 import pyyaks.context
-import pyyaks.logger as Log
+import pyyaks.logger
 import Shell
+
+logger = pyyaks.logger.logger
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
@@ -36,9 +38,9 @@ def func_depend(func, *args, **kwargs):
     if isinstance(dep, (list, tuple)):
         func, args, kwargs = dep
         if func(*args, **kwargs):
-            Log.debug('Func %s succeeded' % func.func_name)
+            logger.debug('Func %s succeeded' % func.func_name)
         else:
-            Log.debug('Func %s failed' % func.func_name)
+            logger.debug('Func %s failed' % func.func_name)
             if deptype == 'depends':
                 raise DependFuncFailure, 'Depend function %s false' % func.func_name
             else:
@@ -72,7 +74,7 @@ def check_depend(depends=None, targets=None):
         if not deps:
             continue
 
-        Log.debug('Checking %s deps' % deptype)
+        logger.debug('Checking %s deps' % deptype)
         for dep in deps:
             if not hasattr(dep, 'mtime'):
                 dep = pyyaks.context.Value(val=dep, name=dep, basedir='.')
@@ -80,20 +82,20 @@ def check_depend(depends=None, targets=None):
             mtime = dep.mtime                
             if mtime is None:
                 print dep.name, repr(dep)
-                Log.debug('File/value %s does not exist' %  dep.name)
+                logger.debug('File/value %s does not exist' %  dep.name)
                 if deptype == 'depends':
                     raise DependFileMissing('Depend file/value %s not found' % dep.name)
                 else:
                     return False
             else:
-                Log.debug('File/Value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
+                logger.debug('File/Value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
                 mtimes[deptype].append(mtime)
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
     # created within the same second (particularly for "touch" files).
     min_targets = min(mtimes['targets'])
     max_depends = max(mtimes['depends'])
-    Log.debug('min targets time=%s   max depeends time=%s'
+    logger.debug('min targets time=%s   max depeends time=%s'
               % (time.ctime(min_targets), time.ctime(max_depends)))
     return min_targets >= max_depends
 
@@ -114,7 +116,7 @@ class TaskDecor(object):
                 raise
             except:
                 if status['fail'] is False:
-                    Log.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    logger.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
                     status['fail'] = True
                 raise
             finally:
@@ -132,11 +134,11 @@ class chdir(TaskDecor):
         self.origdir = os.getcwd()
         newdir = pyyaks.context.render(self.newdir)
         os.chdir(newdir)
-        Log.verbose('Changed to directory "%s"' % newdir)
+        logger.verbose('Changed to directory "%s"' % newdir)
 
     def teardown(self):
         os.chdir(self.origdir)
-        Log.debug('Restored directory to "%s"' % self.origdir)
+        logger.debug('Restored directory to "%s"' % self.origdir)
 
 class setenv(TaskDecor):
     def __init__(self, env):
@@ -145,13 +147,13 @@ class setenv(TaskDecor):
     def setup(self):
         self.origenv = os.environ.copy()
         os.environ.update(self.env)
-        Log.debug('Updated local environment')
+        logger.debug('Updated local environment')
 
     def teardown(self):
         for envvar in self.env:
             del os.environ[envvar]
         os.environ.update(self.origenv)
-        Log.debug('Restored local environment')
+        logger.debug('Restored local environment')
 
 class depends(TaskDecor):
     def __init__(self, depends=None, targets=None):
@@ -162,7 +164,7 @@ class depends(TaskDecor):
     def setup(self):
         if check_depend(self.depends, self.targets) and self.targets:
             self.skip = True
-            Log.verbose('Skipping because dependencies met')
+            logger.verbose('Skipping because dependencies met')
             raise TaskSuccess
 
     def teardown(self):
@@ -183,10 +185,10 @@ def task(always=None):
             if status['fail'] and not always:
                 return
 
-            Log.verbose('')
-            Log.verbose('-' * 60)
-            Log.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
-            Log.verbose('-' * 60)
+            logger.verbose('')
+            logger.verbose('-' * 60)
+            logger.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
+            logger.verbose('-' * 60)
 
             try:
                 func(*args, **kwargs)
@@ -197,7 +199,7 @@ def task(always=None):
             except:
                 if status['fail'] is False:
                     print 'Setting status=fail in task'
-                    Log.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    logger.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
                     status['fail'] = True
                 
         new_func.func_name = func.func_name
@@ -208,24 +210,24 @@ def task(always=None):
 def start(message=None):
     status['fail'] = False
     if message is not None:
-        Log.info('')
-        Log.info('*' * 60)
-        Log.info('** %-54s **' % message)
-        Log.info('*' * 60)
+        logger.info('')
+        logger.info('*' * 60)
+        logger.info('** %-54s **' % message)
+        logger.info('*' * 60)
 
 def end(message=None):
     if message is not None:
-        Log.info('')
-        Log.info('*' * 60)
-        Log.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
-        Log.info('*' * 60)
-        Log.info('')
+        logger.info('')
+        logger.info('*' * 60)
+        logger.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
+        logger.info('*' * 60)
+        logger.info('')
     status['fail'] = False
         
 
 def bash(loglevel, oneline=False):
     """Wrap Shell.bash function so input cmd is automatically rendered and
-    output gets Logged if loglevel <= VERBOSE.
+    output gets logged if loglevel <= VERBOSE.
 
     :param loglevel: logging level
     :param oneline: join multiline input into a one space-separated line
@@ -234,14 +236,14 @@ def bash(loglevel, oneline=False):
         def __init__(self):
             pass
         def write(self, s):
-            Log.verbose(s, autonewline=False)
+            logger.verbose(s, autonewline=False)
         def flush(self):
             pass
         def close(self):
             pass
 
     def newbash(cmd, **kwargs):
-        logfile = (loglevel <= Log.VERBOSE) and VerboseFileHandle() or None
+        logfile = (loglevel <= logger.VERBOSE) and VerboseFileHandle() or None
         cmdlines = [x.strip() for x in cmd.splitlines()]
         sep = ' ' if oneline else os.linesep
         cmd = pyyaks.context.render(sep.join(cmdlines))

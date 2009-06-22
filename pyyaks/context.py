@@ -7,9 +7,10 @@ import pdb
 import django.template
 import django.conf
 import Ska.File
-import pyyaks.logger as logger
+import pyyaks.logger
 
 Context = {}
+logger = pyyaks.logger.logger
 
 try:
     django.conf.settings.configure()
@@ -178,14 +179,13 @@ class ContextDict(dict):
         # If ContextValue was already init'd then just update val
         if key in self:
             value = dict.__getitem__(self, key)
-            print 'Setting value', repr(value), ' with name=', key, 'val=', val, 'basedir=', self.basedir
+            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), key, val, self.basedir))
             value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
             value = Value(val=val, name=key, basedir=self.basedir)
-            # print 'Creating value with name= val= basedir=%s', repr(value), key, val, self.basedir
-            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), key, str(val), self.basedir))
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), key, val, self.basedir))
             dict.__setitem__(self, key, value)
 
     def update(self, vals):
