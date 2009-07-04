@@ -3,14 +3,14 @@ import os
 import time
 import stat
 import pdb
+import logging
 
 import django.template
 import django.conf
 import Ska.File
-import pyyaks.logger
 
-Context = {}
-logger = pyyaks.logger.logger
+CONTEXT = {}
+logger = logging.getLogger('pyyaks.context')
 
 try:
     django.conf.settings.configure()
@@ -108,7 +108,7 @@ class Value(object):
             # Following line will give TypeError unless val is string-like
             while (Django_tag.search(val)):
                 template = django.template.Template(val)
-                context = django.template.Context(Context)
+                context = django.template.Context(CONTEXT)
                 strval = template.render(context)
                 if strval == val:
                     break
@@ -155,7 +155,7 @@ class ContextDict(dict):
     """
     def __init__(self, name, basedir=None):
         dict.__init__(self)
-        Context[name] = self
+        CONTEXT[name] = self
         self.name = name
         self.basedir = basedir
 

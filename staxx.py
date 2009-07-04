@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import os
 import re
 import sys
@@ -23,7 +22,7 @@ import cosmocalc
 import pyyaks.task
 import pyyaks.logger
 import pyyaks.context
-from pyyaks.task import task, chdir, setenv, depends
+from pyyaks.task import task, chdir, setenv, depends, make_dir
 from pyyaks.context import render, ContextDict, render_args
 
 def get_options():
@@ -38,7 +37,7 @@ def get_options():
                       help="File name for output logs in strftime format")
     parser.add_option("--loglevel",
                       default='debug',
-                      help="Log level (debug|task|summary|quiet)")
+                      help="Log level (debug|verbose|info|quiet)")
     parser.add_option("--objlist",
                       default='sources/sdss_gal_stack0.dat.small',
                       help="Object list file")
@@ -64,19 +63,14 @@ opt, args = get_options()
 
 # Initialize output logging
 loglevel = dict(debug=pyyaks.logger.DEBUG,
-                task=pyyaks.logger.VERBOSE,
-                summary=pyyaks.logger.INFO,
+                verbose=pyyaks.logger.VERBOSE,
+                info=pyyaks.logger.INFO,
                 quiet=60)[opt.loglevel]
 logfile = time.strftime(opt.logfile)
 logdir = os.path.dirname(logfile)
 if not os.path.exists(logdir):
     os.makedirs(logdir)
-pyyaks.logger.init(stdoutlevel=loglevel, filename=logfile, filelevel=loglevel, format="%(message)s")
-logger = pyyaks.logger.logger
-
-# Create bash wrapper around Shell.bash.  This sets up a file-like object
-# to stream shell pexpect output in a way that plays well with pyyaks.task output.
-bash = pyyaks.task.bash(loglevel, oneline=True)
+logger = pyyaks.logger.get_logger(level=loglevel, filename=logfile)
 
 # Setup CIAO
 ciaoenv = Ska.Shell.getenv('. /soft/ciao/bin/ciao.bash')
@@ -144,22 +138,18 @@ SRC['ra'].format = '%.5f'
 SRC['dec'].format = '%.4f'
 Src = SRC.accessor()
 
-VAL = ContextDict('val')
+VAL = pyyaks.context.ContextDict('val')
 Val = VAL.accessor()
 
 # Set up a couple of functions for convenience
 get_globfiles = render_args()(Ska.File.get_globfiles)
 make_local_copy = render_args()(Ska.File.make_local_copy)
 
-@pyyaks.context.render_args(1)
-def make_dir(dir_):
-    """Make a directory if it doesn't exist."""
-    if not os.path.isdir(dir_):
-        os.makedirs(dir_)
-        if not os.path.isdir(dir_):
-            raise pyyaks.task.TaskFailure('Failed to make directory %s' % dir_)
-        logger.verbose('Made directory ' + dir_)
-        
+def bash(cmd):
+    """Wrap bash to first split lines in cmd and join with space."""
+    cmdlines = [x.strip() for x in cmd.splitlines()]
+    return pyyaks.task.bash(" ".join(cmdlines))
+
 #####################################################################################
 # Task definitions
 #####################################################################################

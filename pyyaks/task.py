@@ -1,16 +1,19 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
+from __future__ import with_statement
+
 import pdb
 import sys
 import os
 import re
 import time
 import traceback
+import logging
 
 import pyyaks.context
 import pyyaks.logger
-import Shell
+import Ska.Shell
 
-logger = pyyaks.logger.logger
+logger = logging.getLogger('pyyaks')
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
@@ -223,9 +226,18 @@ def end(message=None):
         logger.info('*' * 60)
         logger.info('')
     status['fail'] = False
+
+@pyyaks.context.render_args(1)
+def make_dir(dir_):
+    """Make a directory if it doesn't exist."""
+    if not os.path.isdir(dir_):
+        os.makedirs(dir_)
+        if not os.path.isdir(dir_):
+            raise pyyaks.task.TaskFailure('Failed to make directory %s' % dir_)
+        logger.verbose('Made directory ' + dir_)
         
 
-def bash(loglevel, oneline=False):
+def bash(cmd, **kwargs):
     """Wrap Shell.bash function so input cmd is automatically rendered and
     output gets logged if loglevel <= VERBOSE.
 
@@ -236,17 +248,14 @@ def bash(loglevel, oneline=False):
         def __init__(self):
             pass
         def write(self, s):
-            logger.verbose(s, autonewline=False)
+            logger.verbose(s)
         def flush(self):
             pass
         def close(self):
             pass
 
-    def newbash(cmd, **kwargs):
-        logfile = (loglevel <= logger.VERBOSE) and VerboseFileHandle() or None
-        cmdlines = [x.strip() for x in cmd.splitlines()]
-        sep = ' ' if oneline else os.linesep
-        cmd = pyyaks.context.render(sep.join(cmdlines))
-        return Shell.bash(cmd, logfile=logfile, **kwargs)
-    return newbash
-
+    with pyyaks.logger.newlines_suppressed(logger):
+        out = Ska.Shell.bash(pyyaks.context.render(cmd),
+                             logfile=VerboseFileHandle(), 
+                             **kwargs)
+    return out
