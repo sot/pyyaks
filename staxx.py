@@ -9,8 +9,9 @@ import shutil
 import time
 import pdb
 
-import Ska.Shell
-import Ska.File
+import pyyaks.shell
+import pyyaks.fileutil
+import multiprocessing
 
 import Ska.Table
 import Ska.CIAO
@@ -51,9 +52,13 @@ def get_options():
     parser.add_option("--aperture-unit",
                       default="ecf",
                       help="Source aperture units (ecf|kpc|pixel)")
+    parser.add_option("--nproc",
+                      default=1,
+                      type='int',
+                      help="Number of processors")
     parser.add_option("--filter",
                       dest = 'filters',
-                      default=['_row_ < 1'],
+                      default=['_row_ < 6'],
                       action='append',
                       help="Filter expression")
     (opt, args) = parser.parse_args()
@@ -70,11 +75,10 @@ logfile = time.strftime(opt.logfile)
 logdir = os.path.dirname(logfile)
 if not os.path.exists(logdir):
     os.makedirs(logdir)
-logger = pyyaks.logger.get_logger(level=loglevel, filename=logfile)
+logger = pyyaks.logger.get_logger(level=loglevel, filename=logfile, format="%(process)d: %(message)s")
 
 # Setup CIAO
-ciaoenv = Ska.Shell.getenv('. /soft/ciao/bin/ciao.bash')
-pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
+ciaoenv = pyyaks.shell.getenv('. /soft/ciao/bin/ciao.bash')
 
 # Vars for staxx processing
 # Configuration values
@@ -142,8 +146,8 @@ VAL = pyyaks.context.ContextDict('val')
 Val = VAL.accessor()
 
 # Set up a couple of functions for convenience
-get_globfiles = render_args()(Ska.File.get_globfiles)
-make_local_copy = render_args()(Ska.File.make_local_copy)
+get_globfiles = render_args()(pyyaks.fileutil.get_globfiles)
+make_local_copy = render_args()(pyyaks.fileutil.make_local_copy)
 
 def bash(cmd):
     """Wrap bash to first split lines in cmd and join with space."""
@@ -651,15 +655,9 @@ def make_index_html():
     open(File['index.html'], 'w').write(index_html)
     logger.verbose('Created report page %s' % File['index.hmtl'])
 
-#####################################################################################
-# Main processing loop
-#####################################################################################
-
-srcs = Ska.Table.read_table(opt.objlist)
-excl_srcs = Ska.Table.read_table(opt.excllist)
-
-for src in Ska.Numpy.filter(srcs, opt.filters):
-    # Clear the SRC contextdict and then populate from objlist table rows
+def run_pipeline(i_src):
+    pfiles_dir = Ska.CIAO.localize_param_files(ciaoenv)
+    src = srcs[i_src]
     SRC.clear()
     for col in srcs.dtype.names:
         try:
@@ -679,6 +677,7 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     make_xdat_and_src_dirs()
 
     # Copy/link various data files
+    lock.acquire()
     make_xdat_to_src_link()
     copy_resources()
     get_ccd_evt_fits()
@@ -686,7 +685,8 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     get_evt_fits()
     get_expmap_fits()
     get_obs_asol_files()
-
+    lock.release()
+    
     # Gather some numbers
     set_coords()
     set_gal_nh()
@@ -712,4 +712,15 @@ for src in Ska.Numpy.filter(srcs, opt.filters):
     store_src(File['info.pickle'])
     
     pyyaks.task.end(message='Processing for %s obsid=%d ccdid=%d' % (Src['xdat_id'], Src['obsid'], Src['ccdid']))
+
+#####################################################################################
+# Main processing loop
+#####################################################################################
+
+srcs = Ska.Numpy.filter(Ska.Table.read_table(opt.objlist), opt.filters)
+excl_srcs = Ska.Table.read_table(opt.excllist)
+
+lock = multiprocessing.Lock()
+pool = multiprocessing.Pool(opt.nproc)
+pool.map(run_pipeline, range(len(srcs)))
 

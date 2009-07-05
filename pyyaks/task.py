@@ -11,7 +11,7 @@ import logging
 
 import pyyaks.context
 import pyyaks.logger
-import Ska.Shell
+import pyyaks.shell
 
 logger = logging.getLogger('pyyaks')
 
@@ -80,7 +80,7 @@ def check_depend(depends=None, targets=None):
         logger.debug('Checking %s deps' % deptype)
         for dep in deps:
             if not hasattr(dep, 'mtime'):
-                dep = pyyaks.context.Value(val=dep, name=dep, basedir='.')
+                dep = pyyaks.context.ContextValue(val=dep, name=dep, basedir='.')
                 
             mtime = dep.mtime                
             if mtime is None:
@@ -91,7 +91,7 @@ def check_depend(depends=None, targets=None):
                 else:
                     return False
             else:
-                logger.debug('File/Value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
+                logger.debug('File/value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
                 mtimes[deptype].append(mtime)
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
@@ -237,25 +237,3 @@ def make_dir(dir_):
         logger.verbose('Made directory ' + dir_)
         
 
-def bash(cmd, **kwargs):
-    """Wrap Shell.bash function so input cmd is automatically rendered and
-    output gets logged if loglevel <= VERBOSE.
-
-    :param loglevel: logging level
-    :param oneline: join multiline input into a one space-separated line
-    """
-    class VerboseFileHandle:
-        def __init__(self):
-            pass
-        def write(self, s):
-            logger.verbose(s)
-        def flush(self):
-            pass
-        def close(self):
-            pass
-
-    with pyyaks.logger.newlines_suppressed(logger):
-        out = Ska.Shell.bash(pyyaks.context.render(cmd),
-                             logfile=VerboseFileHandle(), 
-                             **kwargs)
-    return out

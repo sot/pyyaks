@@ -7,7 +7,8 @@ import logging
 
 import django.template
 import django.conf
-import Ska.File
+import pyyaks.fileutil
+
 
 CONTEXT = {}
 logger = logging.getLogger('pyyaks.context')
@@ -19,11 +20,11 @@ except RuntimeError, msg:
     pass
 
 def render(s):
-    """Convenience function to create an anonymous Value and then render it."""
-    if isinstance(s, Value):
+    """Convenience function to create an anonymous ContextValue and then render it."""
+    if isinstance(s, ContextValue):
         return str(s)
     else:
-        return str(Value(s))
+        return str(ContextValue(s))
 
 def render_args(*argids):
     """Decorate a function so that the specified arguments are rendered via
@@ -58,10 +59,10 @@ def render_args(*argids):
         return newfunc
     return decorate
 
-class Value(object):
+class ContextValue(object):
     def __init__(self, val=None, name=None, basedir=None, format=None, ext=None):
-        # Possibly inherit attrs (except for 'ext') from an existing Value object
-        if isinstance(val, Value):
+        # Possibly inherit attrs (except for 'ext') from an existing ContextValue object
+        if isinstance(val, ContextValue):
             for attr in ('_val', '_mtime', 'name', 'basedir', 'format'):
                 setattr(self, attr, getattr(val, attr))
         else:
@@ -82,7 +83,7 @@ class Value(object):
         return self._val
 
     def setval(self, val):
-        if isinstance(val, Value):
+        if isinstance(val, ContextValue):
             self.__init__(val, ext=val.ext)
         else:
             self._val = val
@@ -119,7 +120,7 @@ class Value(object):
 
         if self.basedir:
             # Note that os.path.join(a,b) returns b is b is already absolute
-            strval = Ska.File.relpath(os.path.join(self.basedir, strval)
+            strval = pyyaks.fileutil.relpath(os.path.join(self.basedir, strval)
                                       + ('.' + self.ext if self.ext else ''))
         return strval
 
@@ -133,25 +134,24 @@ class Value(object):
 
     def __getattr__(self, ext):
         """Any unfound attribute lookup is interpreted as a file extension.
-        A new Value object with that extension is returned.
+        A new ContextValue object with that extension is returned.
         """
         # pickle looks for some specific attributes beginning with __ and expects
         # AttributeError if they are not provided by class.
         if ext.startswith('__'):
             raise AttributeError
         else:
-            return Value(val=self, ext=ext)
+            return ContextValue(val=self, ext=ext)
 
 class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the Context and
     overrides __setitem__ to create an appropriate ContextValue when assigning
-    to a dict key.  Example:
+    to a dict key.  Example::
 
-    src = ContextDict('src')  # Make Context dict with root name 'src'
-    src['obsid'] = 123
-    files = ContextDict('file') # Context dict with root name 'file'
-    files['src']  = 'data/obs{{ src.obsid }}'
-    files['evt2'] = '{{ file.src }}/acis_evt2.fits'
+      src['obsid'] = 123
+      files = ContextDict('file') # Context dict with root name 'file'
+      files['src']  = 'data/obs{{ src.obsid }}'
+      files['evt2'] = '{{ file.src }}/acis_evt2.fits'
     """
     def __init__(self, name, basedir=None):
         dict.__init__(self)
@@ -168,12 +168,12 @@ class ContextDict(dict):
 
         # Autogenerate an entry for key
         if base not in self:
-            value = Value(val=None, name=base, basedir=self.basedir)
+            value = ContextValue(val=None, name=base, basedir=self.basedir)
             logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
             dict.__setitem__(self, base, value)
 
-        baseValue = dict.__getitem__(self, base)
-        return (Value(baseValue, ext=ext) if ext else baseValue)
+        baseContextValue = dict.__getitem__(self, base)
+        return (ContextValue(baseContextValue, ext=ext) if ext else baseContextValue)
 
     def __setitem__(self, key, val):
         # If ContextValue was already init'd then just update val
@@ -184,7 +184,7 @@ class ContextDict(dict):
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
-            value = Value(val=val, name=key, basedir=self.basedir)
+            value = ContextValue(val=val, name=key, basedir=self.basedir)
             logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), key, val, self.basedir))
             dict.__setitem__(self, key, value)
 
@@ -205,22 +205,24 @@ class ContextDict(dict):
             dict.__getitem__(self, key).clear()
 
 class ContextDictAccessor(object):
-    """Very simple mechanism to access ContextDict values via object attribute
-    syntax.  For a ContextValue.Value object the value is returned.
-    For a ContextValue.File object the relative path name is returned.
+    """Convenience class to get or set ContextDict values via object
+    attribute syntax. If the ContextValue represents a file path (basedir
+    attribute is defined) then the rendered relative path name is returned.
 
     Example::
 
+      from pyyaks.context import (ContextDict, ContextDictAccessor)
       SRC = ContextDict('src')
-      Src = Src.accessor()
+      Src = SRC.accessor()
       SRC['test'] = 5.2
-      Src.test
+      print Src.test
       Src.test = 8
-      SRC['test'].val
-      FileDict = ContextDict('file', basedir='/pool14', valuetype=ContextValue.File)
-      File = ContextDictAccessor(FileDict)
-      File.obs_dir = 'obs{{src.obsid}} /'
-      File.obs_dir
+      print SRC['test'].val
+      
+      FILE = ContextDict('file', basedir='.')
+      File = ContextDictAccessor(FILE)
+      File.obs_dir = 'obs{{src.test}}/'
+      print File.obs_dir
     """
     def __init__(self, contextdict):
         object.__setattr__(self, '_contextdict', contextdict)
