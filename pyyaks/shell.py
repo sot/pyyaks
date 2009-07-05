@@ -11,6 +11,8 @@ import logging
 
 import pyyaks.context
 import pyyaks.logger
+import pyyaks.pexpect as pexpect
+
 logger = logging.getLogger('pyyaks.shell')
 
 class ShellError(Exception):
@@ -104,7 +106,6 @@ def bash_shell(cmdstr, logfile=None, importenv=False, getenv=False, env=None):
 
     # Import pexpect here so that this the other (Spawn) part of this module
     # doesn't depend on pexpect (which is not in the std library)
-    import pexpect
     pexpect.spawn.sendline_expect = _sendline_expect_func(re_PROMPT)
 
     os.environ['PS1'] = PROMPT1

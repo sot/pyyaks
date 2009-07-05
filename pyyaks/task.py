@@ -13,7 +13,7 @@ import pyyaks.context
 import pyyaks.logger
 import pyyaks.shell
 
-logger = logging.getLogger('pyyaks')
+logger = logging.getLogger('pyyaks.task')
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
