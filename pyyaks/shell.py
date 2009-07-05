@@ -13,7 +13,7 @@ import pyyaks.context
 import pyyaks.logger
 import pyyaks.pexpect as pexpect
 
-logger = logging.getLogger('pyyaks.shell')
+logger = logging.getLogger('pyyaks')
 
 class ShellError(Exception):
     pass

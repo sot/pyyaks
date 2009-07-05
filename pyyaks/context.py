@@ -11,7 +11,7 @@ import pyyaks.fileutil
 
 
 CONTEXT = {}
-logger = logging.getLogger('pyyaks.context')
+logger = logging.getLogger('pyyaks')
 
 try:
     django.conf.settings.configure()
