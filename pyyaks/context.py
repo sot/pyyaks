@@ -5,19 +5,11 @@ import stat
 import pdb
 import logging
 
-import django.template
-import django.conf
+import jinja2
 import pyyaks.fileutil
-
 
 CONTEXT = {}
 logger = logging.getLogger('pyyaks')
-
-try:
-    django.conf.settings.configure()
-except RuntimeError, msg:
-    print msg
-    pass
 
 def render(s):
     """Convenience function to create an anonymous ContextValue and then render it."""
@@ -104,13 +96,12 @@ class ContextValue(object):
     
     def __str__(self):
         strval = val = self._val
-        Django_tag = re.compile(r'{[%{]')
+        template_tag = re.compile(r'{[%{]')
         try:                            
             # Following line will give TypeError unless val is string-like
-            while (Django_tag.search(val)):
-                template = django.template.Template(val)
-                context = django.template.Context(CONTEXT)
-                strval = template.render(context)
+            while (template_tag.search(val)):
+                template = jinja2.Template(val)
+                strval = template.render(CONTEXT)
                 if strval == val:
                     break
                 else:

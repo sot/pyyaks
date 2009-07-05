@@ -646,7 +646,7 @@ def set_src_area_ratio():
     logger.verbose("Set Src.src_area_ratio = %.3f" % Src.src_area_ratio)
 
 #####################################################################################
-@task(always=True)
+@task(run=True)
 @chdir(FILE['src_dir'])
 @depends(depends=[FILE['index_template.html']],
          targets=[FILE['index.html']])
@@ -722,5 +722,5 @@ excl_srcs = Ska.Table.read_table(opt.excllist)
 
 lock = multiprocessing.Lock()
 pool = multiprocessing.Pool(opt.nproc)
-pool.map(run_pipeline, range(len(srcs)))
+map(run_pipeline, range(len(srcs)))
 
