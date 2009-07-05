@@ -13,7 +13,7 @@ import pyyaks.context
 import pyyaks.logger
 import pyyaks.shell
 
-logger = logging.getLogger('pyyaks.task')
+logger = logging.getLogger('pyyaks')
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
@@ -176,17 +176,34 @@ class depends(TaskDecor):
             and not check_depend(self.depends, self.targets)):
             raise TaskFailure, 'Dependency not met after processing'
 
-def task(always=None):
+def task(run=None):
     """Function decorator to support definition of a processing task.
+    
+    The ``run`` parameter value controls whether the task is run.
 
-    :param always: Always run the task even if prior processing has failed
+    - function: if ``run`` is a callable function then call the function
+        with the task name as its argument and use the return value 
+        for the following rules.
+    - ``True``: Always run even if a previous task has already failed
+    - ``False``: Never run
+    - ``None``: Run if no previous pipeline tasks have failed (default).
+
+    :param run: control running of task
     :returns: Decorated function
     """
 
     def decorate(func):
         def new_func(*args, **kwargs):
-            if status['fail'] and not always:
+            runval = run(func.func_name) if callable(run) else run
+            if runval is False:
                 return
+            elif runval is True:
+                pass
+            elif runval is None:
+                if status['fail']:
+                    return
+            else:
+                raise ValueError('run value = %s but must be True, False, or None' % runval)
 
             logger.verbose('')
             logger.verbose('-' * 60)
