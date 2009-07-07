@@ -4,6 +4,7 @@ import time
 import stat
 import pdb
 import logging
+import cPickle as pickle
 
 import jinja2
 import pyyaks.fileutil
@@ -11,17 +12,23 @@ import pyyaks.fileutil
 CONTEXT = {}
 logger = logging.getLogger('pyyaks')
 
-def render(s):
-    """Convenience function to create an anonymous ContextValue and then render it."""
-    if isinstance(s, ContextValue):
-        return str(s)
+def render(val):
+    """Render ``val`` using the template engine and the current context.
+
+    :param val: input value
+
+    :returns: rendered value
+    """
+    if isinstance(val, ContextValue):
+        return str(val)
     else:
-        return str(ContextValue(s))
+        return str(ContextValue(val))
 
 def render_args(*argids):
-    """Decorate a function so that the specified arguments are rendered via
+    """
+    Decorate a function so that the specified arguments are rendered via
     context.render() before being passed to function.  Keyword arguments are
-    unaffected.
+    unaffected.  
 
     Examples::
     
@@ -51,7 +58,34 @@ def render_args(*argids):
         return newfunc
     return decorate
 
+def update_context(filename):
+    """Update the current context from ``filename`` if it exists.  This file
+    should be created with ``store_context()``.
+
+    :param filename: name of file containing context
+    :rtype: None
+    """
+    if os.path.exists(filename):
+        logger.verbose('Restoring context from %s' % filename)
+        context = pickle.load(open(filename, 'r'))
+        for name in context:
+            if name not in CONTEXT:
+                tmp = ContextDict(name, basedir=context[name].basedir)
+            CONTEXT[name].update(context[name])
+        
+def store_context(filename):
+    logger.verbose('Storing context to %s' % filename)
+    pickle.dump(CONTEXT, open(filename, 'w'))
+
 class ContextValue(object):
+    """Value with context that has a name and modification time. 
+
+    :param val: initial value (optional)
+    :param name: context value name
+    :param basedir: root directory for a file context value
+    :param format: optional format specifier when rendering value
+    :param ext: extension to be added when rendering a file context value
+    """
     def __init__(self, val=None, name=None, basedir=None, format=None, ext=None):
         # Possibly inherit attrs (except for 'ext') from an existing ContextValue object
         if isinstance(val, ContextValue):
@@ -61,15 +95,16 @@ class ContextValue(object):
             self._val = val
             self._mtime = None if val is None else time.time()
             self.name = name
-            self.format = format
             self.basedir = basedir and os.path.abspath(basedir)
             self.format = format
 
         self.ext = ext
 
     def clear(self):
+        """Clear the value, modification time, and format (set to None)"""
         self._val = None
         self._mtime = None
+        self.format = None
 
     def getval(self):
         return self._val
@@ -82,9 +117,11 @@ class ContextValue(object):
             self._mtime = time.time()
 
     val = property(getval, setval)
+    """Set or get with the ``val`` attribute"""
 
     @property
     def mtime(self):
+        """Modification time"""
         if self.basedir:
             filename = str(self)
             return (os.stat(filename)[stat.ST_MTIME] if os.path.exists(filename) else None)
@@ -117,14 +154,16 @@ class ContextValue(object):
 
     @property
     def rel(self):
+        """File context value as a relative path"""
         return str(self)
 
     @property
     def abs(self):
+        """File context value as an absolute path"""
         return os.path.abspath(str(self))
 
     def __getattr__(self, ext):
-        """Any unfound attribute lookup is interpreted as a file extension.
+        """Interpret an unfound attribute lookup as a file extension.
         A new ContextValue object with that extension is returned.
         """
         # pickle looks for some specific attributes beginning with __ and expects
@@ -135,14 +174,12 @@ class ContextValue(object):
             return ContextValue(val=self, ext=ext)
 
 class ContextDict(dict):
-    """Dictionary class that automatically registers the dict in the Context and
-    overrides __setitem__ to create an appropriate ContextValue when assigning
-    to a dict key.  Example::
+    """Dictionary class that automatically registers the dict in the module
+    CONTEXT and overrides __setitem__ to create an appropriate ContextValue
+    when assigning to a dict key.
 
-      src['obsid'] = 123
-      files = ContextDict('file') # Context dict with root name 'file'
-      files['src']  = 'data/obs{{ src.obsid }}'
-      files['evt2'] = '{{ file.src }}/acis_evt2.fits'
+    :param name: name by which dictionary is registered in context.
+    :param basedir: base directory for file context
     """
     def __init__(self, name, basedir=None):
         dict.__init__(self)
@@ -186,12 +223,15 @@ class ContextDict(dict):
             self[key] = val
 
     def accessor(self):
+        """Return a ContextDictAccessor for the dictionary"""
         return ContextDictAccessor(self)
 
     def __repr__(self):
         return str(dict((key, self[key].val) for key in self))
 
     def clear(self):
+        """Clear all values in dictionary.  The keys are not deleted so that
+        ContextValue references in task decorators maintain validity."""
         for key in self:
             dict.__getitem__(self, key).clear()
 

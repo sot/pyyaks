@@ -10,6 +10,7 @@ import gzip
 class TempDir(object):
     """Create a temporary directory that gets automatically removed.  Any
     object initialization parameters are passed through to `tempfile.mkdtemp`_.
+    ::
 
       >>> import pyyaks.fileutil
       >>> tmpdir = pyyaks.fileutil.TempDir(dir='.')
@@ -49,7 +50,7 @@ def get_globfiles(fileglob, minfiles=1, maxfiles=1):
 def relpath(path, cwd=None):
     """ Find relative path from current directory to path.
 
-    Example usage:
+    Example usage::
     
       >>> from pyyaks.fileutil import relpath
       >>> relpath('/a/b/hello/there', cwd='/a/b/c/d')
@@ -93,12 +94,7 @@ def make_local_copy(infile, outfile=None, copy=False, linkabs=False, clobber=Tru
     """
     Make a local copy of or link to ``infile``, gunzipping if necessary.
     
-    :param infile: Input file name
-    :param outfile: Output file name (default: ``infile`` basename)
-    :param copy: Always copy instead of linking when possible
-    :param linkabs: Create link to absolute path instead of relative
-    :param clobber: Clobber existing file
-    :rtype: Output file name
+    Examples::
 
       >>> import pyyaks.fileutil
       >>> import random, tempfile
@@ -114,6 +110,14 @@ def make_local_copy(infile, outfile=None, copy=False, linkabs=False, clobber=Tru
       True
       >>> os.unlink(tmpfile)
       >>> os.unlink(tmplocal)
+
+    :param infile: Input file name
+    :param outfile: Output file name (default: ``infile`` basename)
+    :param copy: Always copy instead of linking when possible
+    :param linkabs: Create link to absolute path instead of relative
+    :param clobber: Clobber existing file
+    :rtype: Output file name
+
     """
     
     if not os.path.exists(infile):

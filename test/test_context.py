@@ -1,8 +1,11 @@
 import os
 import tempfile
 import time
+import pyyaks.logger
 import pyyaks.context as context
 import nose.tools as nt
+
+logger = pyyaks.logger.get_logger()
 
 SRC = context.ContextDict('src')
 Src = SRC.accessor()
@@ -81,3 +84,24 @@ def test_var_mtime():
     assert(SRC['new'].mtime is None)
     SRC['new'] = 1.0
     assert(abs(SRC['new'].mtime - time.time()) < 2)
+
+def test_store_update_context():
+    SRC['obsid'] = 123
+    Src['ccdid'] = 2
+    SRC['ra'] = 1.4343256789
+    SRC['ra'].format = '%.4f'
+    File['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
+    Src.nested = 'nested{{src.ccdid}}'
+    tmp = tempfile.NamedTemporaryFile()
+    context.store_context(tmp.name)
+    SRC.clear()
+    FILE.clear()
+    assert SRC['ra'].val is None
+    assert FILE['evt2'].val is None
+    context.update_context(tmp.name)
+    assert str(SRC['ra']) == '1.4343'
+    assert str(SRC['srcdir']) == 'obs123/nested2'
+    assert File['srcdir'] == 'data/obs123/nested2'
+    assert File.srcdir == 'data/obs123/nested2'
+    assert str(FILE['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
+    

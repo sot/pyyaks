@@ -48,4 +48,3 @@ Functions
 
 .. autofunction:: make_dir
 
-.. autofunction:: bash

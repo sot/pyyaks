@@ -1,3 +1,6 @@
+"""Customize logging to add a VERBOSE level and provide a logger for which
+the trailing newline can be suppressed.
+"""
 import logging
 import types
 from logging import NOTSET, DEBUG, INFO, WARNING, CRITICAL, ERROR
@@ -6,6 +9,16 @@ import contextlib
 
 @contextlib.contextmanager
 def newlines_suppressed(logger):
+    """Context manager to suppress newline output for each handler in the
+    supplied ``logger``.  Example::
+
+      with newlines_suppressed(logger):
+          logger.info('Starting something ... ')
+      # process ...
+      logger.info('done')
+
+    :param logger: logger object created with ``get_logger()``
+    """
     current = []
     try:
         for handler in logger.handlers:
@@ -57,7 +70,10 @@ def get_logger(filename=None, filemode='w', format='%(message)s',
     logging.basicConfig but the logger name is configurable and both a file
     output and a stream output can be created. 
     
-    Returns a logger object.
+    Returns a logger object.  For this logger the trailing newline in invidual
+    handlers can be suppressed by setting the ``suppress_newline`` attribute
+    to True for that handler.  More normally use the ``newlines_suppressed``
+    context manager.
     
     The default behaviour is to create a StreamHandler which writes to
     sys.stdout, set a formatter using the "%(message)s" format string, and
@@ -66,19 +82,16 @@ def get_logger(filename=None, filemode='w', format='%(message)s',
     A number of optional keyword arguments may be specified, which can alter
     the default behaviour.
 
-    filename  Specifies that a FileHandler be created using the specified
-              filename.
-    filemode  Specifies the mode to open the file, if filename is specified
-              (defaults to 'w').
-    format    Use the specified format string for the handler.
-    datefmt   Use the specified date/time format.
-    level     Set the logger level to the specified level (default=INFO).
-    filelevel Set the level for the file logger.  If not specified this
-              defaults to ``level``.
-    stream    Use the specified stream to initialize the StreamHandler.
+    :param filename: create FileHandler using the specified filename
+    :param filemode: open ``filename`` with specified filemode
+    :param format: handler format string
+    :param datefmt: handler date/time format specifier
+    :param level:  logger level (default=INFO).
+    :param filelevel: logger level for the file logger.  defaults to
+            ``level`` if not specified.
+    :param stream: initialize the StreamHandler using ``stream``
               Defaults to sys.stdout.  Set to None to disable.
-    name      Logger name
-
+    :param name: Logger name
     """
     # Get a logger for the specified name and remove existing handlers
     logger = logging.getLogger(name)
