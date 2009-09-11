@@ -6,6 +6,9 @@ import re
 import shutil
 import glob
 import gzip
+import logging
+
+logger = logging.getLogger('pyyaks')
 
 class TempDir(object):
     """Create a temporary directory that gets automatically removed.  Any

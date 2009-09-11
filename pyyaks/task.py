@@ -84,7 +84,6 @@ def check_depend(depends=None, targets=None):
                 
             mtime = dep.mtime                
             if mtime is None:
-                print dep.name, repr(dep)
                 logger.debug('File/value %s does not exist' %  dep.name)
                 if deptype == 'depends':
                     raise DependFileMissing('Depend file/value %s not found' % dep.name)
@@ -218,7 +217,6 @@ def task(run=None):
                 pass
             except:
                 if status['fail'] is False:
-                    print 'Setting status=fail in task'
                     logger.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
                     status['fail'] = True
                 
@@ -232,14 +230,15 @@ def start(message=None):
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % message)
+        logger.info('** %-54s **' % pyyaks.context.render(message))
         logger.info('*' * 60)
 
 def end(message=None):
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
+        logger.info('** %-54s **' % (pyyaks.context.render(message) +
+                                     (' FAILED' if status['fail'] else ' SUCCEEDED')))
         logger.info('*' * 60)
         logger.info('')
     status['fail'] = False

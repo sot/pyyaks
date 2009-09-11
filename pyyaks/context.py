@@ -133,6 +133,8 @@ class ContextValue(object):
     
     def __str__(self):
         strval = val = self._val
+        if val is None:
+            raise ValueError("Context value '%s' is undefined" % self.name)
         template_tag = re.compile(r'{[%{]')
         try:                            
             # Following line will give TypeError unless val is string-like
