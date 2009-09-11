@@ -1,5 +1,5 @@
 from distutils.core import setup
-setup(name='cosmocalc',
+setup(name='pyyaks',
       # url='http://cxc.harvard.edu/contrib/cosmocalc',
       version='0.1',
       description='Pipeline processing toolkit',
