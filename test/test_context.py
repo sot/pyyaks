@@ -4,104 +4,120 @@ import time
 import pyyaks.logger
 import pyyaks.context as context
 import nose.tools as nt
+import StringIO
+
+import cPickle as pickle
 
 logger = pyyaks.logger.get_logger()
 
-SRC = context.ContextDict('src')
-Src = SRC.accessor()
-FILE = context.ContextDict('file', basedir='data')
-File = FILE.accessor()
-File['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
+src = context.ContextDict('src')
+files = context.ContextDict('files', basedir='data')
 
 def test_set_by_key():
-    SRC['obsid'] = 123
-    SRC['srcdir'] = 'obs{{ src.obsid }}/{{src.nested}}'
+    src['obsid'] = 123
+    src['srcdir'] = 'obs{{ src.obsid }}/{{src.nested}}'
 
 def test_set_by_accessor_key():
-    Src['ccdid'] = 2
-    File['srcdir'] = '{{ src.srcdir }}'
-    File['evt2']   = '{{ src.srcdir }}/acis_evt2'
+    src.val['ccdid'] = 2
+    files.val['srcdir'] = '{{ src.srcdir }}'
+    files.val['evt2']   = '{{ src.srcdir }}/acis_evt2'
 
 def test_set_by_attr():
-    Src.nested = 'nested{{src.ccdid}}'
+    src.val.nested = 'nested{{src.ccdid}}'
 
 def test_basic():
-    assert str(SRC['obsid']) == '123'
-    assert str(SRC['ccdid']) == '2'
-    assert Src.obsid == 123
-    assert Src['obsid'] == 123
+    assert str(src['obsid']) == '123'
+    assert str(src['ccdid']) == '2'
+    assert src.val.obsid == 123
+    assert src.val['obsid'] == 123
+    assert src.val.obsid == 123
+    assert src.val['obsid'] == 123
 
 def test_nested():
-    assert str(SRC['srcdir']) == 'obs123/nested2'
+    assert str(src['srcdir']) == 'obs123/nested2'
 
 def test_get_accessor():
-    assert File['srcdir'] == 'data/obs123/nested2'
+    assert files.rel['srcdir'] == 'data/obs123/nested2'
 
 def test_get_attr():
-    assert File.srcdir == 'data/obs123/nested2'
+    assert files.rel.srcdir == 'data/obs123/nested2'
 
 def test_auto_create():
-    SRC['ra'].format = '%.2f'
-    assert SRC['ra'].val is None
-    assert SRC['ra'].mtime is None
+    src['ra'].format = '%.2f'
+    assert src['ra'].val is None
+    assert src['ra'].mtime is None
 
 def test_format():
-    SRC['ra'] = 1.2343256789
-    assert str(SRC['ra']) == '1.23'
-    SRC['ra'].format = '%.4f'
-    assert str(SRC['ra']) == '1.2343'
+    src['ra'] = 1.2343256789
+    assert str(src['ra']) == '1.23'
+    src['ra'].format = '%.4f'
+    assert str(src['ra']) == '1.2343'
 
 def test_file_rel():
-    assert str(FILE['evt2']) == FILE['evt2'].rel
-    assert str(FILE['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
-    assert context.render('{{file.evt2.fits}}') == 'data/obs123/nested2/acis_evt2.fits'
+    assert str(files['evt2']) == files['evt2'].rel
+    assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
+    assert context.render('{{files.evt2.fits}}') == 'data/obs123/nested2/acis_evt2.fits'
 
 def test_file_abs():
-    assert FILE['evt2.fits'].abs == os.path.join(os.getcwd(), 'data/obs123/nested2/acis_evt2.fits')
+    assert files['evt2.fits'].abs == os.path.join(os.getcwd(), 'data/obs123/nested2/acis_evt2.fits')
 
 @nt.raises(ValueError)
 def test_dot_in_key():
-    FILE['acis_evt2.fits'] = 'acis_evt2.fits'
+    files['acis_evt2.fits'] = 'acis_evt2.fits'
 
 def test_abs_file1():
-    FILE['abs'] = '/usr/bin/env'
-    assert FILE['abs'].rel == '/usr/bin/env'
-    assert FILE['abs'].abs == '/usr/bin/env'
+    files['abs'] = '/usr/bin/env'
+    assert files['abs'].rel == '/usr/bin/env'
+    assert files['abs'].abs == '/usr/bin/env'
     
 def test_abs_file2():
-    FILE['abs'] = os.getcwd()
-    assert FILE['abs'].rel == ''
-    assert FILE['abs'].abs == os.getcwd()
+    files['abs'] = os.getcwd()
+    assert files['abs'].rel == ''
+    assert files['abs'].abs == os.getcwd()
     
 def test_file_mtime():
     tmp = tempfile.NamedTemporaryFile()
-    FILE['tmp'] = tmp.name
-    dt = abs(FILE['tmp'].mtime - time.time())
+    files['tmp'] = tmp.name
+    dt = abs(files['tmp'].mtime - time.time())
     tmp.close()
     assert(dt < 2)
 
 def test_var_mtime():
-    assert(SRC['new'].mtime is None)
-    SRC['new'] = 1.0
-    assert(abs(SRC['new'].mtime - time.time()) < 2)
+    assert(src['new'].mtime is None)
+    src['new'] = 1.0
+    assert(abs(src['new'].mtime - time.time()) < 2)
 
 def test_store_update_context():
-    SRC['obsid'] = 123
-    Src['ccdid'] = 2
-    SRC['ra'] = 1.4343256789
-    SRC['ra'].format = '%.4f'
-    File['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
-    Src.nested = 'nested{{src.ccdid}}'
-    tmp = tempfile.NamedTemporaryFile()
-    context.store_context(tmp.name)
-    SRC.clear()
-    FILE.clear()
-    assert SRC['ra'].val is None
-    assert FILE['evt2'].val is None
-    context.update_context(tmp.name)
-    assert str(SRC['ra']) == '1.4343'
-    assert str(SRC['srcdir']) == 'obs123/nested2'
-    assert File['srcdir'] == 'data/obs123/nested2'
-    assert File.srcdir == 'data/obs123/nested2'
-    assert str(FILE['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
+    src.val.nested = 'nested{{src.ccdid}}'
+    src.val['ccdid'] = 2
+    src['srcdir'] = 'obs{{ src.obsid }}/{{src.nested}}'
+    files['srcdir'] = '{{ src.srcdir }}'
+    src['obsid'] = 123
+    src.val['ccdid'] = 2
+    src['ra'] = 1.4343256789
+    src['ra'].format = '%.4f'
+    files['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
+    src.val.nested = 'nested{{src.ccdid}}'
+
+    tmp = StringIO.StringIO()
+    tmp2 = StringIO.StringIO()
+    pickle.dump(src, tmp)
+    pickle.dump(files, tmp2)
+
+    src.clear()
+    files.clear()
+
+    assert src['ra'].val is None
+    assert files['evt2'].val is None
+
+    tmp.seek(0)
+    tmp2.seek(0)
+    src.update(pickle.load(tmp))
+    files.update(pickle.load(tmp2))
+
+    assert str(src['ra']) == '1.4343'
+    assert str(src['srcdir']) == 'obs123/nested2'
+    assert files['srcdir'].rel == 'data/obs123/nested2'
+    assert files.rel.srcdir == 'data/obs123/nested2'
+    assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
     

@@ -160,14 +160,6 @@ def bash_shell(cmdstr, logfile=None, importenv=False, getenv=False, env=None):
 
 # Some convenience methods for bashing
 
-def bash(cmdstr, logfile=None, importenv=False, env=None):
-    """Run the ``cmdstr`` string in a bash shell.  See ``bash_shell`` for options.
-
-
-    :returns: bash output
-    """
-    return bash_shell(cmdstr, logfile=logfile, importenv=importenv, env=env)[0]
-
 def bash(cmdstr, importenv=False, env=None):
     """Render the input ``cmdstr`` and run in a bash shell.  Output is logged at
     the VERBOSE level.

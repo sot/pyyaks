@@ -1,2 +1,9 @@
+dist/
 doc/_build
 pyyaks.wpr
+examples/data
+examples/pyyaks
+examples/run.log
+examples/staxx.py
+
+

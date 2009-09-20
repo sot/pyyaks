@@ -59,21 +59,27 @@ def render_args(*argids):
     return decorate
 
 def update_context(filename):
-    """Update the current context from ``filename`` if it exists.  This file
-    should be created with ``store_context()``.
+    """Update the current context from ``filename``.  This file should be
+    created with ``store_context()``.
 
     :param filename: name of file containing context
     :rtype: None
     """
-    if os.path.exists(filename):
-        logger.verbose('Restoring context from %s' % filename)
-        context = pickle.load(open(filename, 'r'))
-        for name in context:
-            if name not in CONTEXT:
-                tmp = ContextDict(name, basedir=context[name].basedir)
-            CONTEXT[name].update(context[name])
+    logger.verbose('Restoring context from %s' % filename)
+    context = pickle.load(open(filename, 'r'))
+    for name in context:
+        if name not in CONTEXT:
+            raise KeyError('ContextDict %s found in %s but not in existing CONTEXT' %
+                           (name, filename))
+            # tmp = ContextDict(name, basedir=context[name].basedir)
+        CONTEXT[name].update(context[name])
         
 def store_context(filename):
+    """Store the current context to ``filename``.
+
+    :param filename: name of file for storing context
+    :rtype: None
+    """
     logger.verbose('Storing context to %s' % filename)
     pickle.dump(CONTEXT, open(filename, 'w'))
 
@@ -104,7 +110,6 @@ class ContextValue(object):
         """Clear the value, modification time, and format (set to None)"""
         self._val = None
         self._mtime = None
-        self.format = None
 
     def getval(self):
         return self._val
@@ -186,11 +191,13 @@ class ContextDict(dict):
     def __init__(self, name, basedir=None):
         dict.__init__(self)
         CONTEXT[name] = self
-        self.name = name
-        self.basedir = basedir
+        self._name = name
+        self._basedir = basedir
+        for attr in ('val', 'rel', 'abs', 'format'):
+            setattr(self, attr, _ContextDictAccessor(self, attr))
 
     def __getitem__(self, key):
-        """Get key value from the ContextDict.  For a ContextDict with valuetype==File
+        """Get key value from the ContextDict.  For a ContextDict with base
         then allow for extensions on key.
         """
         match = re.match(r'([^.]+)\.(.+)', key)
@@ -198,8 +205,8 @@ class ContextDict(dict):
 
         # Autogenerate an entry for key
         if base not in self:
-            value = ContextValue(val=None, name=base, basedir=self.basedir)
-            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
+            value = ContextValue(val=None, name=base, basedir=self._basedir)
+            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self._basedir))
             dict.__setitem__(self, base, value)
 
         baseContextValue = dict.__getitem__(self, base)
@@ -209,13 +216,13 @@ class ContextDict(dict):
         # If ContextValue was already init'd then just update val
         if key in self:
             value = dict.__getitem__(self, key)
-            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), key, val, self.basedir))
+            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self._basedir))
             value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
-            value = ContextValue(val=val, name=key, basedir=self.basedir)
-            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), key, val, self.basedir))
+            value = ContextValue(val=val, name=key, basedir=self._basedir)
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self._basedir))
             dict.__setitem__(self, key, value)
 
     def update(self, vals):
@@ -223,10 +230,6 @@ class ContextDict(dict):
             vals = vals.items()
         for key, val in vals:
             self[key] = val
-
-    def accessor(self):
-        """Return a ContextDictAccessor for the dictionary"""
-        return ContextDictAccessor(self)
 
     def __repr__(self):
         return str(dict((key, self[key].val) for key in self))
@@ -237,37 +240,36 @@ class ContextDict(dict):
         for key in self:
             dict.__getitem__(self, key).clear()
 
-class ContextDictAccessor(object):
-    """Convenience class to get or set ContextDict values via object
-    attribute syntax. If the ContextValue represents a file path (basedir
-    attribute is defined) then the rendered relative path name is returned.
+class _ContextDictAccessor(object):
+    """Get or set ContextValue attributes via object attribute syntax through ContextDict.
 
-    Example::
+    Examples::
 
-      from pyyaks.context import (ContextDict, ContextDictAccessor)
-      SRC = ContextDict('src')
-      Src = SRC.accessor()
-      SRC['test'] = 5.2
-      print Src.test
-      Src.test = 8
-      print SRC['test'].val
-      
-      FILE = ContextDict('file', basedir='.')
-      File = ContextDictAccessor(FILE)
-      File.obs_dir = 'obs{{src.test}}/'
-      print File.obs_dir
+      src = ContextDict('src')
+      src.val.joe = 2    # same as src['joe'] = 2
+      x = src.val.joe    # src['joe'].val
+      src.format.joe = '%03d'
+      print src['joe']
+
+      files = ContextDict('files', basedir='.')
+      files['jane'] = '{{src.joe}}/jane'
+      print files.rel.jane
+      print files.abs.jane
     """
-    def __init__(self, contextdict):
+    def __init__(self, contextdict, attr):
         object.__setattr__(self, '_contextdict', contextdict)
+        object.__setattr__(self, '_attr', attr)
 
     def __getattr__(self, name):
-        if self._contextdict.basedir is None:
-            return self._contextdict[name].val
-        else:
-            return self._contextdict[name].rel
+        # pickle looks for some specific attributes beginning with __ and expects
+        # AttributeError if they are not provided by class.
+        if name.startswith('__'):
+            raise AttributeError
+
+        return getattr(self._contextdict[name], self._attr)
 
     def __setattr__(self, name, value):
-        self._contextdict[name] = value
+        setattr(self._contextdict[name], self._attr, value)
         
     def __getitem__(self, name):
         return self.__getattr__(name)

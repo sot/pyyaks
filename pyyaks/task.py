@@ -97,7 +97,7 @@ def check_depend(depends=None, targets=None):
     # created within the same second (particularly for "touch" files).
     min_targets = min(mtimes['targets'])
     max_depends = max(mtimes['depends'])
-    logger.debug('min targets time=%s   max depeends time=%s'
+    logger.debug('min targets time=%s   max depends time=%s'
               % (time.ctime(min_targets), time.ctime(max_depends)))
     return min_targets >= max_depends
 
@@ -225,20 +225,35 @@ def task(run=None):
         return new_func
     return decorate
 
-def start(message=None):
+@task()
+def update_context(filename):
+    """Run pyyaks.context.update_context as a task to catch exceptions"""
+    pyyaks.context.update_context(filename)
+
+@task()
+def store_context(filename):
+    """Run pyyaks.context.store_context as a task to catch exceptions"""
+    pyyaks.context.store_context(filename)
+
+@pyyaks.context.render_args()
+def start(message=None, context_file=None):
     status['fail'] = False
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % pyyaks.context.render(message))
+        logger.info('** %-54s **' % message)
         logger.info('*' * 60)
+    if context_file is not None and os.path.exists(context_file):
+        update_context(context_file)
 
-def end(message=None):
+def end(message=None, context_file=None):
+    if context_file is not None:
+        store_context(context_file)
+
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % (pyyaks.context.render(message) +
-                                     (' FAILED' if status['fail'] else ' SUCCEEDED')))
+        logger.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
         logger.info('*' * 60)
         logger.info('')
     status['fail'] = False
