@@ -102,6 +102,8 @@ def check_depend(depends=None, targets=None):
     return min_targets >= max_depends
 
 class TaskDecor(object):
+    """Base class for generating task decorators."""
+
     def setup(self):
         pass
 
@@ -129,6 +131,11 @@ class TaskDecor(object):
         return new_func
 
 class chdir(TaskDecor):
+    """Run task within a specified directory.
+
+    :param newdir: directory
+    """
+    
     def __init__(self, newdir):
         self.newdir = newdir
         
@@ -143,6 +150,11 @@ class chdir(TaskDecor):
         logger.debug('Restored directory to "%s"' % self.origdir)
 
 class setenv(TaskDecor):
+    """Run task within specfied runtime environment.
+
+    :param env: dict of environment values
+    """
+    
     def __init__(self, env):
         self.env = env
 
@@ -158,6 +170,15 @@ class setenv(TaskDecor):
         logger.debug('Restored local environment')
 
 class depends(TaskDecor):
+    """Check that dependencies are met:
+    - ``depends`` files or values exist
+    - ``targets`` files or values exist and are all newer than every ``depends``.
+
+    :param depends: sequence of context values that must exist on task entrance.
+    :param targets: sequence of context values that must exist on task exit and be newer than
+                    all ``depends`` (if supplied).
+    """
+
     def __init__(self, depends=None, targets=None):
         self.depends = depends
         self.targets = targets
@@ -237,6 +258,8 @@ def store_context(filename):
 
 @pyyaks.context.render_args()
 def start(message=None, context_file=None):
+    """Start a pipeline sequence."""
+    
     status['fail'] = False
     if message is not None:
         logger.info('')
@@ -247,6 +270,8 @@ def start(message=None, context_file=None):
         update_context(context_file)
 
 def end(message=None, context_file=None):
+    """End a pipeline sequence."""
+    
     if context_file is not None:
         store_context(context_file)
 

@@ -2,12 +2,12 @@
 import os
 import re
 import urllib
-import pdb
 
-import pyyaks.task
-import pyyaks.logger
-import pyyaks.context
-from pyyaks.task import task, chdir, setenv, depends
+import pyyaks.task       # Pipeline definition and execution
+import pyyaks.logger     # Output logging control
+import pyyaks.context    # Template rendering to provide context values
+import pyyaks.shell      # Sub-process control e.g. spawning shell commands
+import pyyaks.fileutil   # File utilities
 
 #######################################################################
 # Initialize data and pyyaks components
@@ -21,30 +21,21 @@ sources =    ((100, "10 45 03.59", "-59 41 04.24", "Eta Carinae",   1.0,   "DSS"
 # Template for a simple HTML report page for each source
 html_template = """
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html>
-<body>
+<html> <body>
 <h2> Skyview image for {{source['name']}} (id={{source.id}})</h2>
 <table>
-    <tr>
-      <td>
-        <table>
-    	   <tr> <td>Name  </td> <td> {{ source.name }} </td> </tr>
-    	   <tr> <td>Id    </td> <td> {{ source.id }} </td> </tr>
-    	   <tr> <td>RA    </td> <td> {{ source.ra_hms }} = {{source.ra}} </td> </tr>
-    	   <tr> <td>Dec   </td> <td> {{ source.dec_dms }} = {{source.dec}} </td> </tr>
-    	   <tr> <td>Size  </td> <td> {{ source.size }} degrees </td> </tr>
-    	   <tr> <td>Survey</td> <td> {{ source.survey }} </td> </tr>
-        </table>
-      </td>
-      <td style="padding:10"> <img src="{{files.image.gif}}">
-      </td>
-    </tr>
+ <tr> <td> <table>
+ 	    <tr> <td>Name  </td> <td> {{ source.name }} </td> </tr>
+ 	    <tr> <td>Id    </td> <td> {{ source.id }} </td> </tr>
+ 	    <tr> <td>RA    </td> <td> {{ source.ra_hms }} = {{source.ra}} </td> </tr>
+ 	    <tr> <td>Dec   </td> <td> {{ source.dec_dms }} = {{source.dec}} </td> </tr>
+ 	    <tr> <td>Size  </td> <td> {{ source.size }} degrees </td> </tr>
+ 	    <tr> <td>Survey</td> <td> {{ source.survey }} </td> </tr>
+           </table> </td>
+     <td style="padding:10"> <img src="{{files.image.gif}}"> </td> </tr>
 </table>
-
- <hr>
- <address>Created by pyyaks</address>
-</body>
-</html>
+<hr> <address>Created by pyyaks</address>
+</body> </html>
 """
 
 # Initialize context dictionary to hold source information
@@ -70,17 +61,17 @@ logger = pyyaks.logger.get_logger(level=loglevel, filename=logfile)
 # Define the processing tasks (functions) that comprise the pipeline.
 #######################################################################
 
-@task()
-@depends(targets=(files['source_dir'],))
+@pyyaks.task.task()
+@pyyaks.task.depends(targets=(files['source_dir'],))
 def make_source_dir():
     """Make the directory that holds outputs for the source."""
 
     os.makedirs(files['source_dir'].rel)
 
 
-@task()
-@depends(depends=(source['ra_hms'], source['dec_dms']),
-         targets=(source['ra'], source['dec']))
+@pyyaks.task.task()
+@pyyaks.task.depends(depends=(source['ra_hms'], source['dec_dms']),
+                     targets=(source['ra'], source['dec']))
 def calc_ra_dec():
     """Calculate decimal RA and Dec from sexigesimal input in source data."""
     
@@ -109,9 +100,9 @@ def calc_ra_dec():
     logger.verbose(pyyaks.context.render('RA={{source.ra}} Dec={{source.dec}}'))
 
 
-@task()
-@depends(depends=(source['ra'], source['dec']),
-         targets=(files['image.gif'],))
+@pyyaks.task.task()
+@pyyaks.task.depends(depends=(source['ra'], source['dec']),
+                     targets=(files['image.gif'],))
 def get_image():
     """Get a sky image from skyview.gsfc.nasa.gov using the batch web interface
     described at http://skyview.gsfc.nasa.gov/docs/batchpage.html."""
@@ -124,9 +115,9 @@ def get_image():
     urllib.urlretrieve(url, filename=files['image.gif'].rel, data=urllib.urlencode(data))
 
 
-@task()
-@depends()
-@chdir(files['source_dir'])
+@pyyaks.task.task()
+@pyyaks.task.depends()
+@pyyaks.task.chdir(files['source_dir'])
 def make_html(depends=(files['image.gif'],),
               targets=(files['index.html'],)):
     """Create a simple HTML report page for this source."""

@@ -9,3 +9,4 @@ pyyaks/task.py
 test/test_context.py
 test/test_logger.py
 test/test_render.py
+examples/skyview.py

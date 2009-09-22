@@ -13,10 +13,6 @@ Classes
    :show-inheritance:
    :members:
    
-.. autoclass:: ContextDictAccessor
-   :show-inheritance:
-   :members:
-   
 Functions
 ---------
 
@@ -24,3 +20,7 @@ Functions
 
 .. autofunction:: render_args
 
+.. autofunction:: store_context
+
+.. autofunction:: update_context
+        
