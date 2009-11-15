@@ -10,5 +10,5 @@ doc:
 	make html
 
 install:
-	rsync -av doc/.build/html/ $(WWW)/
+	rsync -av doc/_build/html/ $(WWW)/
 	rsync -av dist/pyyaks-*.tar.gz $(WWW)/downloads/
