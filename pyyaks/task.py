@@ -13,7 +13,13 @@ import pyyaks.context
 import pyyaks.logger
 import pyyaks.shell
 
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 logger = logging.getLogger('pyyaks')
+logger.addHandler(NullHandler())
+logger.propagate = False
 
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)

@@ -13,7 +13,13 @@ import pyyaks.context
 import pyyaks.logger
 import pyyaks.pexpect as pexpect
 
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 logger = logging.getLogger('pyyaks')
+logger.addHandler(NullHandler())
+logger.propagate = False
 
 class ShellError(Exception):
     pass

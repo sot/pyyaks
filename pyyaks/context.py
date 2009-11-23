@@ -9,8 +9,15 @@ import cPickle as pickle
 import jinja2
 import pyyaks.fileutil
 
-CONTEXT = {}
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 logger = logging.getLogger('pyyaks')
+logger.addHandler(NullHandler())
+logger.propagate = False
+
+CONTEXT = {}
 
 def render(val):
     """Render ``val`` using the template engine and the current context.

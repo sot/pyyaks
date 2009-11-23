@@ -8,7 +8,13 @@ import glob
 import gzip
 import logging
 
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
 logger = logging.getLogger('pyyaks')
+logger.addHandler(NullHandler())
+logger.propagate = False
 
 class TempDir(object):
     """Create a temporary directory that gets automatically removed.  Any
