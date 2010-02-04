@@ -60,8 +60,13 @@ def render_args(*argids):
             newargs = [(render(x) if i in ids else x) for (i, x) in enumerate(args)]
             return func(*newargs, **kwargs)
 
-        newfunc.func_name = func.func_name
-        newfunc.func_doc = func.func_doc
+        # Make an effort to copy func_name and func_doc.  Built-ins don't have these.
+        try:   
+            newfunc.func_name = func.func_name
+            newfunc.func_doc = func.func_doc
+        except AttributeError:
+            pass
+
         return newfunc
     return decorate
 
