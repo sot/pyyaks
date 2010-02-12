@@ -70,30 +70,37 @@ def render_args(*argids):
         return newfunc
     return decorate
 
-def update_context(filename):
+def update_context(filename, keys=None):
     """Update the current context from ``filename``.  This file should be
     created with ``store_context()``.
 
     :param filename: name of file containing context
+    :param keys: list of keys in CONTEXT to update (default=None => all)
     :rtype: None
     """
     logger.verbose('Restoring context from %s' % filename)
     context = pickle.load(open(filename, 'r'))
     for name in context:
+        if keys and name not in keys:
+            continue
         if name not in CONTEXT:
             raise KeyError('ContextDict %s found in %s but not in existing CONTEXT' %
                            (name, filename))
-            # tmp = ContextDict(name, basedir=context[name].basedir)
         CONTEXT[name].update(context[name])
         
-def store_context(filename):
+def store_context(filename, keys=None):
     """Store the current context to ``filename``.
 
     :param filename: name of file for storing context
+    :param keys: list of keys in CONTEXT to store (default=None => all)
     :rtype: None
     """
     logger.verbose('Storing context to %s' % filename)
-    pickle.dump(CONTEXT, open(filename, 'w'))
+    if keys:
+        dump_context = dict((x, CONTEXT[x]) for x in keys)
+    else:
+        dump_context = CONTEXT
+    pickle.dump(dump_context, open(filename, 'w'))
 
 class ContextValue(object):
     """Value with context that has a name and modification time. 

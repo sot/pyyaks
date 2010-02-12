@@ -253,17 +253,17 @@ def task(run=None):
     return decorate
 
 @task()
-def update_context(filename):
+def update_context(filename, keys):
     """Run pyyaks.context.update_context as a task to catch exceptions"""
-    pyyaks.context.update_context(filename)
+    pyyaks.context.update_context(filename, keys)
 
 @task()
-def store_context(filename):
+def store_context(filename, keys):
     """Run pyyaks.context.store_context as a task to catch exceptions"""
-    pyyaks.context.store_context(filename)
+    pyyaks.context.store_context(filename, keys)
 
 @pyyaks.context.render_args()
-def start(message=None, context_file=None):
+def start(message=None, context_file=None, context_keys=None):
     """Start a pipeline sequence."""
     
     status['fail'] = False
@@ -273,13 +273,13 @@ def start(message=None, context_file=None):
         logger.info('** %-54s **' % message)
         logger.info('*' * 60)
     if context_file is not None and os.path.exists(context_file):
-        update_context(context_file)
+        update_context(context_file, context_keys)
 
-def end(message=None, context_file=None):
+def end(message=None, context_file=None, context_keys=None):
     """End a pipeline sequence."""
     
     if context_file is not None:
-        store_context(context_file)
+        store_context(context_file, context_keys)
 
     if message is not None:
         logger.info('')
