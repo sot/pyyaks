@@ -127,3 +127,11 @@ def test_store_update_context():
     assert files.rel.srcdir == 'data/obs123/nested2'
     assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
     
+def test_update_basedir():
+    files['tmpfile'] = 'tmpfile'
+    assert files['tmpfile'].rel == 'data/tmpfile'
+    files.basedir = 'newdata'
+    assert files['tmpfile'].rel == 'newdata/tmpfile'
+    files.basedir = 'data'
+    assert files['tmpfile'].rel == 'data/tmpfile'
+    

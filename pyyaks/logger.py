@@ -96,8 +96,9 @@ def get_logger(filename=None, filemode='w', format='%(message)s',
     # Get a logger for the specified name and remove existing handlers
     logger = logging.getLogger(name)
     logger.setLevel(DEBUG)
-    for hdlr in logger.handlers:
+    for hdlr in [h for h in logger.handlers]:
         logger.removeHandler(hdlr)
+        
     fmt = logging.Formatter(format, datefmt)
 
     # Add handlers. Add NullHandler if no file or stream output so that

@@ -259,6 +259,16 @@ class ContextDict(dict):
         for key in self:
             dict.__getitem__(self, key).clear()
 
+    def get_basedir(self):
+        return self._basedir
+
+    def set_basedir(self, val):
+        self._basedir = val
+        for contextval in self.values():
+            contextval.basedir = os.path.abspath(self._basedir)
+
+    basedir = property(get_basedir, set_basedir)
+
 class _ContextDictAccessor(object):
     """Get or set ContextValue attributes via object attribute syntax through ContextDict.
 
