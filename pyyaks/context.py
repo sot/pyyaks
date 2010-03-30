@@ -111,16 +111,16 @@ class ContextValue(object):
     :param format: optional format specifier when rendering value
     :param ext: extension to be added when rendering a file context value
     """
-    def __init__(self, val=None, name=None, basedir=None, format=None, ext=None):
+    def __init__(self, val=None, name=None, format=None, ext=None, parent=None):
         # Possibly inherit attrs (except for 'ext') from an existing ContextValue object
         if isinstance(val, ContextValue):
-            for attr in ('_val', '_mtime', 'name', 'basedir', 'format'):
+            for attr in ('_val', '_mtime', 'name', 'parent', 'format'):
                 setattr(self, attr, getattr(val, attr))
         else:
             self._val = val
             self._mtime = None if val is None else time.time()
             self.name = name
-            self.basedir = basedir and os.path.abspath(basedir)
+            self.parent = parent
             self.format = format
 
         self.ext = ext
@@ -142,6 +142,13 @@ class ContextValue(object):
 
     val = property(getval, setval)
     """Set or get with the ``val`` attribute"""
+
+    @property
+    def basedir(self):
+        if self.parent:
+            return self.parent.basedir
+        else:
+            return None
 
     @property
     def mtime(self):
@@ -202,16 +209,18 @@ class ContextValue(object):
 class ContextDict(dict):
     """Dictionary class that automatically registers the dict in the module
     CONTEXT and overrides __setitem__ to create an appropriate ContextValue
-    when assigning to a dict key.
+    when assigning to a dict key.  If no ``name`` is supplied then the
+    ContextDict is not registered in the global CONTEXT.
 
     :param name: name by which dictionary is registered in context.
     :param basedir: base directory for file context
     """
-    def __init__(self, name, basedir=None):
+    def __init__(self, name=None, basedir=None):
         dict.__init__(self)
-        CONTEXT[name] = self
+        if name is not None:
+            CONTEXT[name] = self
         self._name = name
-        self._basedir = basedir
+        self.basedir = basedir
         for attr in ('val', 'rel', 'abs', 'format'):
             setattr(self, attr, _ContextDictAccessor(self, attr))
 
@@ -224,8 +233,8 @@ class ContextDict(dict):
 
         # Autogenerate an entry for key
         if base not in self:
-            value = ContextValue(val=None, name=base, basedir=self._basedir)
-            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self._basedir))
+            value = ContextValue(val=None, name=base, parent=self)
+            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
             dict.__setitem__(self, base, value)
 
         baseContextValue = dict.__getitem__(self, base)
@@ -235,13 +244,13 @@ class ContextDict(dict):
         # If ContextValue was already init'd then just update val
         if key in self:
             value = dict.__getitem__(self, key)
-            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self._basedir))
+            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
             value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
-            value = ContextValue(val=val, name=key, basedir=self._basedir)
-            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self._basedir))
+            value = ContextValue(val=val, name=key, parent=self)
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
 
     def update(self, vals):
@@ -263,9 +272,7 @@ class ContextDict(dict):
         return self._basedir
 
     def set_basedir(self, val):
-        self._basedir = val
-        for contextval in self.values():
-            contextval.basedir = os.path.abspath(self._basedir)
+        self._basedir = val and os.path.abspath(val)
 
     basedir = property(get_basedir, set_basedir)
 

@@ -24,7 +24,7 @@ logger.propagate = False
 # Module var for maintaining status of current set of tasks
 status = dict(fail = False)
 
-class DependFileMissing(Exception):
+class DependMissing(Exception):
     pass
 
 class DependFuncFailure(Exception):
@@ -86,13 +86,16 @@ def check_depend(depends=None, targets=None):
         logger.debug('Checking %s deps' % deptype)
         for dep in deps:
             if not hasattr(dep, 'mtime'):
-                dep = pyyaks.context.ContextValue(val=dep, name=dep, basedir='.')
+                dep = pyyaks.context.ContextValue(val=dep, name=dep, parent=ContextDict(basedir='.'))
                 
             mtime = dep.mtime                
             if mtime is None:
                 logger.debug('File/value %s does not exist' %  dep.name)
                 if deptype == 'depends':
-                    raise DependFileMissing('Depend file/value %s not found' % dep.name)
+                    if dep.basedir:
+                        raise DependMissing('Depend file %s ("%s") not found' % (dep.abs, dep.name))
+                    else:
+                        raise DependMissing('Depend value "%s" not found' % dep.name)
                 else:
                     return False
             else:

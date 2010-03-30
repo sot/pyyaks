@@ -129,9 +129,11 @@ def test_store_update_context():
     
 def test_update_basedir():
     files['tmpfile'] = 'tmpfile'
+    a = files['tmpfile']
     assert files['tmpfile'].rel == 'data/tmpfile'
     files.basedir = 'newdata'
     assert files['tmpfile'].rel == 'newdata/tmpfile'
+    assert a.rel == 'newdata/tmpfile'
     files.basedir = 'data'
     assert files['tmpfile'].rel == 'data/tmpfile'
-    
+
