@@ -380,3 +380,15 @@ class Spawn(object):
                 raise
 
         return self.exitstatus
+
+def run_tool(cmd=None, punlearn=False, split_char='\n'):
+    spawn = Spawn(stdout=None)
+    cmds = [pyyaks.context.render(x).strip() for x in cmd.split(split_char)]
+    if punlearn:
+        spawn.run(['punlearn', cmds[0]])
+    logger.verbose('Running ' + ' '.join(cmds))
+    exitstatus = spawn.run(cmds)
+    logger.verbose(''.join(spawn.outlines))
+    if exitstatus:
+        raise ValueError('Command failed with exit status = {0}'.format(exitstatus))
+    return spawn.outlines

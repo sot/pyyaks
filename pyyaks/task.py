@@ -59,17 +59,18 @@ def check_depend(depends=None, targets=None):
     """Check that dependencies are satisfied.
 
     A dependency in the ``depends`` or ``targets`` list can be either a file
-    name as a string or a renderable object with an mtime attribute.
+    name as a string or a renderable object (file or value) with an mtime
+    attribute.
 
     A file name is treated in the usual sense of depend and target files.  A
     missing depend file raises an exception and a missing target means
-    check_depend returns False.  In addition all target files must be newer
-    than all depend files.
+    check_depend returns False.  In addition all targets must be newer
+    than all depends.
 
-    :param depends: list of file or function dependencies
-    :param targets: list of file or function targets
+    :param depends: list of file or value dependencies
+    :param targets: list of file or value targets
 
-    :returns: boolean indicating that dependencies are satisfied
+    :returns: dependencies_satisfied, info_message
     """
     # Lists of mod time for depend and target files.  Seed the list with a
     # fake very OLD and NEW file (respectively) so the final min/max comparison
@@ -78,37 +79,52 @@ def check_depend(depends=None, targets=None):
                   targets = [2**31])
     deptypes = dict(depends=depends,
                     targets=targets)
+    statuses = {}
 
-    for deptype, deps in deptypes.items():
+    # Step through all depends and targets and determine existence and mod. time.
+    # Collect this status and informational messages in statuses[deptype]
+    for deptype in ('depends', 'targets'):
+        statuses[deptype] = []
+        deps = deptypes[deptype]
         if not deps:
             continue
 
-        logger.debug('Checking %s deps' % deptype)
         for dep in deps:
+            # Check if dep is not a ContextValue.  If so interpret as a filename
             if not hasattr(dep, 'mtime'):
-                dep = pyyaks.context.ContextValue(val=dep, name=dep, parent=ContextDict(basedir='.'))
+                dep = pyyaks.context.ContextValue(val=dep, name=dep,
+                                                  parent=pyyaks.context.ContextDict(basedir='.'))
                 
             mtime = dep.mtime                
+            info = '%s %s %s = %s' % (deptype.title()[:-1], dep.type, dep.fullname, dep.abs)
             if mtime is None:
-                logger.debug('File/value %s does not exist' %  dep.name)
-                if deptype == 'depends':
-                    if dep.basedir:
-                        raise DependMissing('Depend file %s ("%s") not found' % (dep.abs, dep.name))
-                    else:
-                        raise DependMissing('Depend value "%s" not found' % dep.name)
-                else:
-                    return False
+                statuses[deptype].append((False, info + ' does not exist'))
             else:
-                logger.debug('File/value %s=%s has mtime: %s' % (dep.name, dep, time.ctime(mtime)))
+                statuses[deptype].append((True, info + ' (%s)' % time.ctime(mtime)))
                 mtimes[deptype].append(mtime)
+
+    # Do all depends exist?  If not raise an exception which will trigger task failure
+    if not all(x[0] for x in statuses['depends']):
+        msg = 'Dependencies missing:\n' + '\n'.join(x[1] for x in statuses['depends'])
+        logger.debug(msg)
+        raise DependMissing(msg)
+
+    # Do all targets exist?  If not return False.  This is a normal situation
+    # before the task is run but will raise an exception after the task is run.
+    if not all(x[0] for x in statuses['targets']):
+        msg = 'Targets missing:\n' + '\n'.join(x[1] for x in statuses['targets'])
+        logger.debug(msg)
+        return False, msg
 
     # Are all targets as old as all depends?  Allow for equality since target files could be
     # created within the same second (particularly for "touch" files).
     min_targets = min(mtimes['targets'])
     max_depends = max(mtimes['depends'])
-    logger.debug('min targets time=%s   max depends time=%s'
-              % (time.ctime(min_targets), time.ctime(max_depends)))
-    return min_targets >= max_depends
+    ok = min_targets >= max_depends
+    msg = 'Depends and targets info:\n' if ok else 'Depend(s) are newer than target(s):\n'
+    msg += '\n'.join(x[1] for x in statuses['depends'] + statuses['targets'])
+    logger.debug(msg)
+    return ok, msg
 
 class TaskDecor(object):
     """Base class for generating task decorators."""
@@ -194,16 +210,17 @@ class depends(TaskDecor):
         self.skip = False
 
     def setup(self):
-        if check_depend(self.depends, self.targets) and self.targets:
+        depends_ok, msg = check_depend(self.depends, self.targets)
+        if depends_ok and self.targets:
             self.skip = True
             logger.verbose('Skipping because dependencies met')
             raise TaskSuccess
 
     def teardown(self):
-        if (not self.skip
-            and self.targets
-            and not check_depend(self.depends, self.targets)):
-            raise TaskFailure, 'Dependency not met after processing'
+        if not self.skip and self.targets:
+            depends_ok, msg = check_depend(self.depends, self.targets)
+            if not depends_ok:
+                raise TaskFailure('Dependency not met after processing:\n' + msg)
 
 def task(run=None):
     """Function decorator to support definition of a processing task.

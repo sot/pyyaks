@@ -114,12 +114,12 @@ class ContextValue(object):
     def __init__(self, val=None, name=None, format=None, ext=None, parent=None):
         # Possibly inherit attrs (except for 'ext') from an existing ContextValue object
         if isinstance(val, ContextValue):
-            for attr in ('_val', '_mtime', 'name', 'parent', 'format'):
+            for attr in ('_val', '_mtime', '_name', 'parent', 'format'):
                 setattr(self, attr, getattr(val, attr))
         else:
             self._val = val
             self._mtime = None if val is None else time.time()
-            self.name = name
+            self._name = name
             self.parent = parent
             self.format = format
 
@@ -144,11 +144,16 @@ class ContextValue(object):
     """Set or get with the ``val`` attribute"""
 
     @property
+    def fullname(self):
+        return (self.parent.name + '.' + self.name) if self.parent else self.name
+
+    @property
+    def name(self):
+        return self._name + ('.' + self.ext if self.ext else '')
+
+    @property
     def basedir(self):
-        if self.parent:
-            return self.parent.basedir
-        else:
-            return None
+        return None if (self.parent is None) else self.parent.basedir
 
     @property
     def mtime(self):
@@ -186,14 +191,19 @@ class ContextValue(object):
         return strval
 
     @property
+    def type(self):
+        return 'value' if (self.basedir is None) else 'file'
+
+    @property
     def rel(self):
-        """File context value as a relative path"""
+        """File context value as a relative path or self._val if not a file"""
+        #return str(self._val) if (self.basedir is None) else str(self)
         return str(self)
 
     @property
     def abs(self):
-        """File context value as an absolute path"""
-        return os.path.abspath(str(self))
+        """File context value as an absolute path or self._val if not a file"""
+        return str(self) if (self.basedir is None) else  os.path.abspath(str(self))
 
     def __getattr__(self, ext):
         """Interpret an unfound attribute lookup as a file extension.
@@ -252,6 +262,10 @@ class ContextDict(dict):
             value = ContextValue(val=val, name=key, parent=self)
             logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
+
+    @property
+    def name(self):
+        return self._name
 
     def update(self, vals):
         if hasattr(vals, 'items'):
