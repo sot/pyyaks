@@ -286,7 +286,7 @@ class ContextDict(dict):
         return self._basedir
 
     def set_basedir(self, val):
-        self._basedir = val and os.path.abspath(val)
+        self._basedir = None if val is None else os.path.abspath(val)
 
     basedir = property(get_basedir, set_basedir)
 
