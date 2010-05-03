@@ -203,7 +203,7 @@ class ContextValue(object):
     @property
     def abs(self):
         """File context value as an absolute path or self._val if not a file"""
-        return str(self) if (self.basedir is None) else  os.path.abspath(str(self))
+        return str(self._val) if (self.basedir is None) else  os.path.abspath(str(self))
 
     def __getattr__(self, ext):
         """Interpret an unfound attribute lookup as a file extension.
