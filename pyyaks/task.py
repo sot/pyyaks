@@ -122,7 +122,7 @@ def check_depend(depends=None, targets=None):
     max_depends = max(mtimes['depends'])
     ok = min_targets >= max_depends
     msg = 'Depends and targets info:\n' if ok else 'Depend(s) are newer than target(s):\n'
-    msg += '\n'.join(x[1] for x in statuses['depends'] + statuses['targets'])
+    msg += '\n'.join(x[1] for x in (statuses['depends'] + statuses['targets']))
     logger.debug(msg)
     return ok, msg
 
@@ -207,9 +207,9 @@ class depends(TaskDecor):
     def __init__(self, depends=None, targets=None):
         self.depends = depends
         self.targets = targets
-        self.skip = False
 
     def setup(self):
+        self.skip = False
         depends_ok, msg = check_depend(self.depends, self.targets)
         if depends_ok and self.targets:
             self.skip = True
