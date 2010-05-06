@@ -145,7 +145,7 @@ class ContextValue(object):
 
     @property
     def fullname(self):
-        return (self.parent.name + '.' + self.name) if self.parent else self.name
+        return (self.parent._name + '.' + self.name) if self.parent else self.name
 
     @property
     def name(self):
@@ -262,10 +262,6 @@ class ContextDict(dict):
             value = ContextValue(val=val, name=key, parent=self)
             logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
-
-    @property
-    def name(self):
-        return self._name
 
     def update(self, vals):
         if hasattr(vals, 'items'):
