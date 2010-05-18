@@ -293,7 +293,7 @@ def start(message=None, context_file=None, context_keys=None):
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % message)
+        logger.info('** %-54s **' % pyyaks.context.render(message))
         logger.info('*' * 60)
 
 def end(message=None, context_file=None, context_keys=None):
@@ -305,7 +305,8 @@ def end(message=None, context_file=None, context_keys=None):
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
-        logger.info('** %-54s **' % (message + (' FAILED' if status['fail'] else ' SUCCEEDED')))
+        logger.info('** %-54s **' % (pyyaks.context.render(message)
+                                     + (' FAILED' if status['fail'] else ' SUCCEEDED')))
         logger.info('*' * 60)
         logger.info('')
     status['fail'] = False
