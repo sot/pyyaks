@@ -287,13 +287,14 @@ def start(message=None, context_file=None, context_keys=None):
     """Start a pipeline sequence."""
     
     status['fail'] = False
+    if context_file is not None and os.path.exists(context_file):
+        update_context(context_file, context_keys)
+
     if message is not None:
         logger.info('')
         logger.info('*' * 60)
         logger.info('** %-54s **' % message)
         logger.info('*' * 60)
-    if context_file is not None and os.path.exists(context_file):
-        update_context(context_file, context_keys)
 
 def end(message=None, context_file=None, context_keys=None):
     """End a pipeline sequence."""
