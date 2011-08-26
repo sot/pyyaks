@@ -95,12 +95,13 @@ def store_context(filename, keys=None):
     :param keys: list of keys in CONTEXT to store (default=None => all)
     :rtype: None
     """
-    logger.verbose('Storing context to %s' % filename)
-    if keys:
-        dump_context = dict((x, CONTEXT[x]) for x in keys)
-    else:
-        dump_context = CONTEXT
-    pickle.dump(dump_context, open(filename, 'w'))
+    if filename:
+        logger.verbose('Storing context to %s' % filename)
+        if keys:
+            dump_context = dict((x, CONTEXT[x]) for x in keys)
+        else:
+            dump_context = CONTEXT
+        pickle.dump(dump_context, open(filename, 'w'))
 
 class ContextValue(object):
     """Value with context that has a name and modification time. 

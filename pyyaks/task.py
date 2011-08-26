@@ -22,7 +22,8 @@ logger.addHandler(NullHandler())
 logger.propagate = False
 
 # Module var for maintaining status of current set of tasks
-status = dict(fail = False)
+status = dict(fail=False,
+              context_file=None)
 
 class DependMissing(Exception):
     pass
@@ -30,7 +31,7 @@ class DependMissing(Exception):
 class DependFuncFailure(Exception):
     pass
 
-class TaskSuccess(Exception):
+class TaskSkip(Exception):
     pass
 
 class TaskFailure(Exception):
@@ -141,7 +142,7 @@ class TaskDecor(object):
             try:
                 self.setup()
                 func(*args, **kwargs)
-            except (KeyboardInterrupt, TaskSuccess):
+            except (KeyboardInterrupt, TaskSkip):
                 raise
             except:
                 if status['fail'] is False:
@@ -214,7 +215,7 @@ class depends(TaskDecor):
         if depends_ok and self.targets:
             self.skip = True
             logger.verbose('Skipping because dependencies met')
-            raise TaskSuccess
+            raise TaskSkip
 
     def teardown(self):
         if not self.skip and self.targets:
@@ -258,9 +259,10 @@ def task(run=None):
 
             try:
                 func(*args, **kwargs)
+                pyyaks.context.store_context(status.get('context_file'))
             except KeyboardInterrupt:
                 raise
-            except TaskSuccess:
+            except TaskSkip:
                 pass
             except:
                 if status['fail'] is False:
@@ -287,6 +289,7 @@ def start(message=None, context_file=None, context_keys=None):
     """Start a pipeline sequence."""
     
     status['fail'] = False
+    status['context_file'] = context_file
     if context_file is not None and os.path.exists(context_file):
         update_context(context_file, context_keys)
 
