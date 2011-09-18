@@ -259,7 +259,8 @@ class ContextDict(dict):
         # Autogenerate an entry for key
         if base not in self:
             value = ContextValue(val=None, name=base, parent=self)
-            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
+            logger.debug('Autogen %s with name=%s basedir=%s' %
+                         (repr(value), base, self.basedir))
             dict.__setitem__(self, base, value)
 
         baseContextValue = dict.__getitem__(self, base)
@@ -269,13 +270,15 @@ class ContextDict(dict):
         # If ContextValue was already init'd then just update val
         if key in self:
             value = dict.__getitem__(self, key)
-            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
+            logger.debug('Setting value %s with name=%s val=%s basedir=%s' %
+                         (repr(value), repr(key), repr(val), self.basedir))
             value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
             value = ContextValue(val=val, name=key, parent=self)
-            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' %
+                         (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
 
     def update(self, vals):
@@ -297,9 +300,14 @@ class ContextDict(dict):
         return self._basedir
 
     def set_basedir(self, val):
-        self._basedir = None if val is None else os.path.abspath(val)
+        if val is None:
+            self._basedir = None
+        else:
+            vals = [os.path.abspath(x) for x in val.split(':')]
+            self._basedir = ':'.join(vals)
 
     basedir = property(get_basedir, set_basedir)
+
 
 class _ContextDictAccessor(object):
     """Get or set ContextValue attributes via object attribute syntax through ContextDict.

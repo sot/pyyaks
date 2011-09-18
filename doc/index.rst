@@ -75,6 +75,8 @@ Download
 The ``pyyaks`` package is available for
 download at `<http://cxc.harvard.edu/contrib/pyyaks/downloads>`_.  
 
+The development version is found on github at `<https://github.com/taldcroft/pyyaks>`_.
+
 Tutorial
 -----------------
 

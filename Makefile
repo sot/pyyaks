@@ -1,4 +1,4 @@
-WWW = /proj/web-cxc/htdocs/contrib/pyyaks
+WWW = /proj/web-cxc-dmz/htdocs/contrib/pyyaks
 
 .PHONY: doc dist
 
