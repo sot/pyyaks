@@ -5,7 +5,7 @@
 
 Classes
 --------
-.. autoclass:: DependFileMissing
+.. autoclass:: DependMissing
    :show-inheritance:
    :members:
    
@@ -13,7 +13,7 @@ Classes
    :show-inheritance:
    :members:
    
-.. autoclass:: TaskSuccess
+.. autoclass:: TaskSkip
    :show-inheritance:
    :members:
    

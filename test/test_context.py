@@ -11,7 +11,7 @@ import cPickle as pickle
 logger = pyyaks.logger.get_logger()
 
 src = context.ContextDict('src')
-files = context.ContextDict('files', basedir='data')
+files = context.ContextDict('files', basedir='pyyaks:data')
 
 def test_format_filter():
     src['obsid'] = 123
@@ -36,13 +36,13 @@ def test_basic():
     assert str(src['ccdid']) == '2'
     assert src.val.obsid == 123
     assert src.val['obsid'] == 123
-    assert src.val.obsid == 123
-    assert src.val['obsid'] == 123
+    assert src['obsid'].val == 123
 
 def test_nested():
     assert str(src['srcdir']) == 'obs123/nested2'
 
 def test_get_accessor():
+    print files.rel['srcdir']
     assert files.rel['srcdir'] == 'data/obs123/nested2'
 
 def test_get_attr():
@@ -66,6 +66,12 @@ def test_file_rel():
 
 def test_file_abs():
     assert files['evt2.fits'].abs == os.path.join(os.getcwd(), 'data/obs123/nested2/acis_evt2.fits')
+
+def test_multiple_basedir_paths():
+    files['context'] = 'context'
+    assert files['context.py'].rel == 'pyyaks/context.py'
+    assert files['context.py'].abs == os.path.join(os.getcwd(), 'pyyaks/context.py')
+    assert files['evt2.fits'].rel == 'data/obs123/nested2/acis_evt2.fits'    
 
 @nt.raises(ValueError)
 def test_dot_in_key():

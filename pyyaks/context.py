@@ -187,8 +187,13 @@ class ContextValue(object):
 
         if self.basedir:
             # Note that os.path.join(a,b) returns b is b is already absolute
-            strval = pyyaks.fileutil.relpath(os.path.join(self.basedir, strval)
-                                      + ('.' + self.ext if self.ext else ''))
+            ext = ('.' + self.ext if self.ext else '')
+            strval0 = strval
+            for basedir in self.basedir.split(':'):
+                strval = pyyaks.fileutil.relpath(os.path.join(basedir, strval0) + ext)
+                if os.path.exists(strval):
+                    break
+
         return strval
 
     @property
@@ -197,13 +202,22 @@ class ContextValue(object):
 
     @property
     def rel(self):
-        """File context value as a relative path or self._val if not a file"""
-        #return str(self._val) if (self.basedir is None) else str(self)
+        """File context value as a relative path or self._val if not a file.
+
+        Basedir can have multiple base paths separated by ':' like the linux
+        PATH.  The first base path for which the content file path exists is
+        returned, or if none exist then the last relative path will be returned.
+        """
         return str(self)
 
     @property
     def abs(self):
-        """File context value as an absolute path or self._val if not a file"""
+        """File context value as an absolute path or self._val if not a file
+
+        Basedir can have multiple base paths separated by ':' like the linux
+        PATH.  The first base path for which the content file path exists is
+        returned, or if none exist then the last absolute path will be returned.
+        """
         return str(self._val) if (self.basedir is None) else  os.path.abspath(str(self))
 
     def __getattr__(self, ext):
