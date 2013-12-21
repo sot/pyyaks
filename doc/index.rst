@@ -284,15 +284,10 @@ object prior to modification.  This can be done in one of two ways.  The first w
 is with a context manager::
 
   CD = ContextDict('cd')
-  def myfunc(val):
-      # Some code..
-      with CD:  # Cache the CD context dictionary values
-          CD['i'] = val
-          # Whatever processing uses CD
-      # More code..
-
   CD['i'] = 20
-  myfunc(10)
+  with CD:  # Cache the CD context dictionary values
+      CD['i'] = 10
+      # Whatever processing uses CD
   assert CD['i'] == 20  # True
 
 You can also cache the context dictionary for the entire function::
