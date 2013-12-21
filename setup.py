@@ -1,7 +1,9 @@
+import pyyaks
+
 from distutils.core import setup
 setup(name='pyyaks',
       url='http://cxc.harvard.edu/contrib/pyyaks',
-      version='0.2.1',
+      version=pyyaks.__version__,
       description='Pipeline processing toolkit',
       author='Tom Aldcroft',
       author_email='aldcroft@head.cfa.harvard.edu',

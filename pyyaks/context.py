@@ -5,6 +5,7 @@ import stat
 import pdb
 import logging
 import cPickle as pickle
+from copy import deepcopy
 
 import jinja2
 import pyyaks.fileutil
@@ -246,6 +247,7 @@ class ContextDict(dict):
             CONTEXT[name] = self
         self._name = name
         self.basedir = basedir
+        self._context_manager_cache = []
         for attr in ('val', 'rel', 'abs', 'format'):
             setattr(self, attr, _ContextDictAccessor(self, attr))
 
@@ -259,7 +261,8 @@ class ContextDict(dict):
         # Autogenerate an entry for key
         if base not in self:
             value = ContextValue(val=None, name=base, parent=self)
-            logger.debug('Autogen %s with name=%s basedir=%s' % (repr(value), base, self.basedir))
+            logger.debug('Autogen %s with name=%s basedir=%s' %
+                         (repr(value), base, self.basedir))
             dict.__setitem__(self, base, value)
 
         baseContextValue = dict.__getitem__(self, base)
@@ -269,14 +272,58 @@ class ContextDict(dict):
         # If ContextValue was already init'd then just update val
         if key in self:
             value = dict.__getitem__(self, key)
-            logger.debug('Setting value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
+            logger.debug('Setting value %s with name=%s val=%s basedir=%s' %
+                         (repr(value), repr(key), repr(val), self.basedir))
             value.val = val
         else:
             if '.' in key:
                 raise ValueError('Dot not allowed in ContextDict key ' + key)
             value = ContextValue(val=val, name=key, parent=self)
-            logger.debug('Creating value %s with name=%s val=%s basedir=%s' % (repr(value), repr(key), repr(val), self.basedir))
+            logger.debug('Creating value %s with name=%s val=%s basedir=%s' %
+                         (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
+
+    def __enter__(self):
+        """
+        Context manager to cache this ContextDict object::
+
+          context_val = Context('context_val')
+          with context_val:
+              pass
+        """
+        # Push a copy of self onto a stack
+        self._context_manager_cache.append(deepcopy(self))
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Pop the most recent cached version and update self
+        self_cache = self._context_manager_cache.pop()
+        self.update(self_cache)
+
+        # Delete any keys now in self that weren't in the cached version
+        delkeys = [key for key in self if key not in self_cache]
+        for key in delkeys:
+            del self[key]
+
+    def cache(self, func=None):
+        """
+        Decorator to cache this ContextDict object
+        """
+        def wrap_func(*args, **kwargs):
+            self_cache = deepcopy(self)
+
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                # Restore to self_cache and delete any keys now in self that weren't in the
+                # cached version
+                self.update(self_cache)
+                delkeys = [key for key in self if key not in self_cache]
+                for key in delkeys:
+                    del self[key]
+
+            return result
+
+        return wrap_func
 
     def update(self, vals):
         if hasattr(vals, 'items'):
@@ -297,9 +344,14 @@ class ContextDict(dict):
         return self._basedir
 
     def set_basedir(self, val):
-        self._basedir = None if val is None else os.path.abspath(val)
+        if val is None:
+            self._basedir = None
+        else:
+            vals = [os.path.abspath(x) for x in val.split(':')]
+            self._basedir = ':'.join(vals)
 
     basedir = property(get_basedir, set_basedir)
+
 
 class _ContextDictAccessor(object):
     """Get or set ContextValue attributes via object attribute syntax through ContextDict.

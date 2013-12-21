@@ -143,3 +143,122 @@ def test_update_basedir():
     files.basedir = 'data'
     assert files['tmpfile'].rel == 'data/tmpfile'
 
+
+def test_context_cache():
+    """
+    Test caching a ContextDict with a context manager.
+    """
+    def change1():
+        with CM:
+            CM['i'] = 20
+            assert CM['i'].val == 20
+
+    def change2():
+        with CM:
+            CM['i'] = 30
+            assert CM['i'].val == 30
+            change1()
+            assert CM['i'].val == 30
+
+    CM = context.ContextDict('c')
+    CM['i'] = 10
+    assert CM['i'].val == 10
+    assert len(CM._context_manager_cache) == 0
+
+    change2()
+
+    assert CM['i'].val == 10
+    assert len(CM._context_manager_cache) == 0
+
+
+def test_context_cache_exception():
+    """
+    Test caching a ContextDict with a context manager.  Make sure that everything
+    still works with an exception raised in the middle of nested calls.
+    """
+    def change1():
+        with CM:
+            CM['i'] = 20
+            assert CM['i'].val == 20
+            raise Exception
+
+    def change2():
+        with CM:
+            CM['i'] = 30
+            assert CM['i'].val == 30
+            change1()
+            assert CM['i'].val == 30
+
+    CM = context.ContextDict('c')
+    CM['i'] = 10
+    assert CM['i'].val == 10
+    assert len(CM._context_manager_cache) == 0
+
+    try:
+        change2()
+    except:
+        pass
+    else:
+        raise Exception('Embedded exception not raised')
+
+    assert CM['i'].val == 10
+    assert len(CM._context_manager_cache) == 0
+
+
+def test_decorator_cache():
+    """
+    Test caching a ContextDict with a decorator.
+    """
+    CM = context.ContextDict('c')
+
+    @CM.cache
+    def change1():
+        CM['i'] = 20
+        assert CM['i'].val == 20
+
+    @CM.cache
+    def change2():
+        CM['i'] = 30
+        assert CM['i'].val == 30
+        change1()
+        assert CM['i'].val == 30
+
+    CM['i'] = 10
+    assert CM['i'].val == 10
+
+    change2()
+
+    assert CM['i'].val == 10
+
+
+def test_decorator_cache_exception():
+    """
+    Test caching a ContextDict with a decorator.  Make sure that everything
+    still works with an exception raised in the middle of nested calls.
+    """
+    CM = context.ContextDict('c')
+
+    @CM.cache
+    def change1():
+        CM['i'] = 20
+        assert CM['i'].val == 20
+        raise Exception
+
+    @CM.cache
+    def change2():
+        CM['i'] = 30
+        assert CM['i'].val == 30
+        change1()
+        assert CM['i'].val == 30
+
+    CM['i'] = 10
+    assert CM['i'].val == 10
+
+    try:
+        change2()
+    except:
+        pass
+    else:
+        raise Exception('Embedded exception not raised')
+
+    assert CM['i'].val == 10
