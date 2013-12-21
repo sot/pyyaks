@@ -5,6 +5,7 @@ import stat
 import pdb
 import logging
 import cPickle as pickle
+from copy import deepcopy
 
 import jinja2
 import pyyaks.fileutil
@@ -246,6 +247,7 @@ class ContextDict(dict):
             CONTEXT[name] = self
         self._name = name
         self.basedir = basedir
+        self._context_manager_cache = []
         for attr in ('val', 'rel', 'abs', 'format'):
             setattr(self, attr, _ContextDictAccessor(self, attr))
 
@@ -280,6 +282,48 @@ class ContextDict(dict):
             logger.debug('Creating value %s with name=%s val=%s basedir=%s' %
                          (repr(value), repr(key), repr(val), self.basedir))
             dict.__setitem__(self, key, value)
+
+    def __enter__(self):
+        """
+        Context manager to cache this ContextDict object::
+
+          context_val = Context('context_val')
+          with context_val:
+              pass
+        """
+        # Push a copy of self onto a stack
+        self._context_manager_cache.append(deepcopy(self))
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Pop the most recent cached version and update self
+        self_cache = self._context_manager_cache.pop()
+        self.update(self_cache)
+
+        # Delete any keys now in self that weren't in the cached version
+        delkeys = [key for key in self if key not in self_cache]
+        for key in delkeys:
+            del self[key]
+
+    def cache(self, func=None):
+        """
+        Decorator to cache this ContextDict object
+        """
+        def wrap_func(*args, **kwargs):
+            self_cache = deepcopy(self)
+
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                # Restore to self_cache and delete any keys now in self that weren't in the
+                # cached version
+                self.update(self_cache)
+                delkeys = [key for key in self if key not in self_cache]
+                for key in delkeys:
+                    del self[key]
+
+            return result
+
+        return wrap_func
 
     def update(self, vals):
         if hasattr(vals, 'items'):

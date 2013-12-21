@@ -273,6 +273,42 @@ For the ``skyview.py`` example this becomes::
       # Declare the end of the pipeline and store processing results to file.
       pyyaks.task.end(message=process_msg, context_file=files['context.pkl'].rel)
 
+Caching ContextDict values
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A context dictionary created with ``ContextDict()`` is global for the Python process
+in which it is being used.  This means any embedded function which modifies a context
+dictionary might unexpectedly modify the state for calling routines.  To avoid this,
+functions or methods which update a context dictionary should cache the state of the
+object prior to modification.  This can be done in one of two ways.  The first way
+is with a context manager::
+
+  CD = ContextDict('cd')
+  def myfunc(val):
+      # Some code..
+      with CD:  # Cache the CD context dictionary values
+          CD['i'] = val
+          # Whatever processing uses CD
+      # More code..
+
+  CD['i'] = 20
+  myfunc(10)
+  assert CD['i'] == 20  # True
+
+You can also cache the context dictionary for the entire function::
+
+  CD = ContextDict('cd')
+
+  @CD.cache
+  def myfunc(val):
+      CD['i'] = val
+      # Whatever processing uses CD
+
+  CD['i'] = 20
+  myfunc(10)
+  assert CD['i'] == 20  # True
+
+
 API documentation
 -----------------
 .. toctree::
