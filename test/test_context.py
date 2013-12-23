@@ -213,6 +213,7 @@ def test_decorator_cache():
 
     @CM.cache
     def change1():
+        "Doc string"
         CM['i'] = 20
         assert CM['i'].val == 20
 
@@ -222,6 +223,9 @@ def test_decorator_cache():
         assert CM['i'].val == 30
         change1()
         assert CM['i'].val == 30
+
+    assert change1.__name__ == 'change1'
+    assert change1.__doc__ == 'Doc string'
 
     CM['i'] = 10
     assert CM['i'].val == 10

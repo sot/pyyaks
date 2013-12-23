@@ -304,10 +304,13 @@ class ContextDict(dict):
         for key in delkeys:
             del self[key]
 
-    def cache(self, func=None):
+    def cache(self, func):
         """
         Decorator to cache this ContextDict object
         """
+        import functools
+
+        @functools.wraps(func)
         def wrap_func(*args, **kwargs):
             self_cache = deepcopy(self)
 
