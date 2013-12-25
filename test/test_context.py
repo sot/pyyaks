@@ -266,3 +266,14 @@ def test_decorator_cache_exception():
         raise Exception('Embedded exception not raised')
 
     assert CM['i'].val == 10
+
+
+def test_reuse_context_dict():
+    """
+    Test that getting a ContextDict twice gives the same value.
+    """
+    c = context.ContextDict('c')
+    c2 = context.ContextDict('c')
+    assert c is c2
+    c['a'] = 1
+    assert c2['a'].val == 1

@@ -241,8 +241,11 @@ class ContextDict(dict):
     :param name: name by which dictionary is registered in context.
     :param basedir: base directory for file context
     """
-    def __init__(self, name=None, basedir=None):
-        dict.__init__(self)
+    def __new__(cls, name=None, basedir=None):
+        if name in CONTEXT:
+            return CONTEXT[name]
+
+        self = super(ContextDict, cls).__new__(cls)
         if name is not None:
             CONTEXT[name] = self
         self._name = name
@@ -250,6 +253,11 @@ class ContextDict(dict):
         self._context_manager_cache = []
         for attr in ('val', 'rel', 'abs', 'format'):
             setattr(self, attr, _ContextDictAccessor(self, attr))
+        return self
+
+    def __init__(self, *args, **kwargs):
+        # Initialization is done in __new__, so don't do anything here
+        pass
 
     def __getitem__(self, key):
         """Get key value from the ContextDict.  For a ContextDict with base
