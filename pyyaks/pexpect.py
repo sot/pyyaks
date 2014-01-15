@@ -63,6 +63,8 @@ http://pexpect.sourceforge.net/
 $Id: pexpect.py 507 2007-12-27 02:40:52Z noah $
 """
 
+from __future__ import print_function, division, absolute_import
+
 try:
     import os, sys, time
     import select
