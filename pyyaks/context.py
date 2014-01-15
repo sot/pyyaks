@@ -7,7 +7,7 @@ import stat
 import pdb
 import logging
 
-import six.moves.cPickle as pickle
+from six.moves import cPickle as pickle
 from copy import deepcopy
 
 import jinja2

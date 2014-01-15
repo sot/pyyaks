@@ -1,3 +1,5 @@
+from __future__ import print_function, division, absolute_import
+
 import os
 import tempfile
 import time
@@ -6,7 +8,8 @@ from .. import context
 import pytest
 import StringIO
 
-import cPickle as pickle
+import six
+from six.moves import cPickle as pickle
 
 print('\nTest file {}\n'.format(__file__))
 
@@ -111,8 +114,8 @@ def test_store_update_context():
     files['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
     src.val.nested = 'nested{{src.ccdid}}'
 
-    tmp = StringIO.StringIO()
-    tmp2 = StringIO.StringIO()
+    tmp = six.StringIO()
+    tmp2 = six.StringIO()
     pickle.dump(src, tmp)
     pickle.dump(files, tmp2)
 
