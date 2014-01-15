@@ -114,10 +114,8 @@ def test_store_update_context():
     files['evt2'] = 'obs{{ src.obsid }}/{{src.nested}}/acis_evt2'
     src.val.nested = 'nested{{src.ccdid}}'
 
-    tmp = six.StringIO()
-    tmp2 = six.StringIO()
-    pickle.dump(src, tmp)
-    pickle.dump(files, tmp2)
+    tmp = pickle.dumps(src)
+    tmp2 = pickle.dumps(files)
 
     src.clear()
     files.clear()
@@ -125,10 +123,8 @@ def test_store_update_context():
     assert src['ra'].val is None
     assert files['evt2'].val is None
 
-    tmp.seek(0)
-    tmp2.seek(0)
-    src.update(pickle.load(tmp))
-    files.update(pickle.load(tmp2))
+    src.update(pickle.loads(tmp))
+    files.update(pickle.loads(tmp2))
 
     assert str(src['ra']) == '1.4343'
     assert str(src['srcdir']) == 'obs123/nested2'
