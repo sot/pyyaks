@@ -4,7 +4,8 @@ import time
 import stat
 import pdb
 import logging
-import cPickle as pickle
+
+import six.moves.cPickle as pickle
 from copy import deepcopy
 
 import jinja2
@@ -57,14 +58,14 @@ def render_args(*argids):
     """
     def decorate(func):
         def newfunc(*args, **kwargs):
-            ids = [x-1 for x in argids] if argids else range(len(args))
+            ids = [x-1 for x in argids] if argids else list(range(len(args)))
             newargs = [(render(x) if i in ids else x) for (i, x) in enumerate(args)]
             return func(*newargs, **kwargs)
 
         # Make an effort to copy func_name and func_doc.  Built-ins don't have these.
         try:   
-            newfunc.func_name = func.func_name
-            newfunc.func_doc = func.func_doc
+            newfunc.__name__ = func.__name__
+            newfunc.__doc__ = func.__doc__
         except AttributeError:
             pass
 
