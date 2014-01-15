@@ -1,6 +1,3 @@
-__version__ = '0.3.2'
-
-
 def test(*args, **kwargs):
     import os
     import pytest
@@ -10,3 +7,5 @@ def test(*args, **kwargs):
     args = (pkg_name,) + args
     print pkg_rootdir, pkg_name
     pytest.main(list(args), **kwargs)
+
+__version__ = '3.3.2'
