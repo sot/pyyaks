@@ -3,7 +3,7 @@ import tempfile
 import time
 import pyyaks.logger
 import pyyaks.context as context
-import nose.tools as nt
+import pytest
 import StringIO
 
 import cPickle as pickle
@@ -73,9 +73,9 @@ def test_multiple_basedir_paths():
     assert files['context.py'].abs == os.path.join(os.getcwd(), 'pyyaks/context.py')
     assert files['evt2.fits'].rel == 'data/obs123/nested2/acis_evt2.fits'    
 
-@nt.raises(ValueError)
 def test_dot_in_key():
-    files['acis_evt2.fits'] = 'acis_evt2.fits'
+    with pytest.raises(ValueError):
+        files['acis_evt2.fits'] = 'acis_evt2.fits'
 
 def test_abs_file1():
     files['abs'] = '/usr/bin/env'
@@ -277,3 +277,13 @@ def test_reuse_context_dict():
     assert c is c2
     c['a'] = 1
     assert c2['a'].val == 1
+
+
+def test_reuse_context_dict_fail():
+    """
+    Test that getting a ContextDict twice but with different basedir fails.
+    """
+    c = context.ContextDict('c1')
+    with pytest.raises(ValueError) as err:
+        context.ContextDict('c1', basedir='something')
+    assert 'ValueError: Re-using' in str(err)
