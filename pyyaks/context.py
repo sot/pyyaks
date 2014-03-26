@@ -243,6 +243,9 @@ class ContextDict(dict):
     """
     def __new__(cls, name=None, basedir=None):
         if name in CONTEXT:
+            if basedir != CONTEXT[name].basedir:
+                raise ValueError("Re-using context name '{}' but basedirs don't match "
+                                 "({} vs. {})".format(name, basedir, CONTEXT[name].basedir))
             return CONTEXT[name]
 
         self = super(ContextDict, cls).__new__(cls)
