@@ -1,6 +1,4 @@
-import os
 import pyyaks.context as context
-import nose.tools as nt
 
 SR = context.ContextDict('sr')
 SR['a'] = 'a'
