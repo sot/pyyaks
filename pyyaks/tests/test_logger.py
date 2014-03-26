@@ -3,6 +3,8 @@ import tempfile
 import StringIO
 from .. import logger as pyyaks_logger
 
+print('\nTest file: {}\n'.format(__file__))
+
 def test_suppress_newline():
     stdout = StringIO.StringIO()
     logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)

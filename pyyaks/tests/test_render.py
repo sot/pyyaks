@@ -1,5 +1,7 @@
 from .. import context
 
+print('\nTest file {}\n'.format(__file__))
+
 SR = context.ContextDict('sr')
 SR['a'] = 'a'
 SR['b'] = 'b'

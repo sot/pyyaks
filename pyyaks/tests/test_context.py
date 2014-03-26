@@ -8,6 +8,8 @@ import StringIO
 
 import cPickle as pickle
 
+print('\nTest file {}\n'.format(__file__))
+
 logger = pyyaks_logger.get_logger()
 
 src = context.ContextDict('src')
@@ -16,7 +18,6 @@ files = context.ContextDict('files', basedir='pyyaks:data')
 def test_format_filter():
     src['obsid'] = 123
     src['test_format'] = '{{ "%05d"|format(src.obsid.val) }}'
-    print str(src['test_format'])
     assert str(src['test_format']) == '00123'
     
 def test_set_by_key():
@@ -42,7 +43,6 @@ def test_nested():
     assert str(src['srcdir']) == 'obs123/nested2'
 
 def test_get_accessor():
-    print files.rel['srcdir']
     assert files.rel['srcdir'] == 'data/obs123/nested2'
 
 def test_get_attr():

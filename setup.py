@@ -1,6 +1,6 @@
 import pyyaks
 
-from distutils.core import setup
+from setuptools import setup
 setup(name='pyyaks',
       url='http://cxc.harvard.edu/contrib/pyyaks',
       version=pyyaks.__version__,
