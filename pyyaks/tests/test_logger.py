@@ -1,11 +1,11 @@
 from __future__ import with_statement
 import tempfile
 import StringIO
-import pyyaks.logger
+from .. import logger as pyyaks_logger
 
 def test_suppress_newline():
     stdout = StringIO.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     for handler in logger.handlers:
         handler.suppress_newline = True
     logger.info('Info')
@@ -18,8 +18,8 @@ def test_suppress_newline():
 
 def test_suppress_newline_cm():
     stdout = StringIO.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
-    with pyyaks.logger.newlines_suppressed(logger):
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
+    with pyyaks_logger.newlines_suppressed(logger):
         logger.info('Info')
         logger.warning('Warning')
     logger.info('Info')
@@ -28,7 +28,7 @@ def test_suppress_newline_cm():
 
 def test_stream():
     stdout = StringIO.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     logger.debug('Debug')
     logger.info('Info')
     logger.warning('Warning')
@@ -36,7 +36,7 @@ def test_stream():
     
 def test_file():
     tmp = tempfile.NamedTemporaryFile()
-    logger = pyyaks.logger.get_logger(filename=tmp.name, stream=None)
+    logger = pyyaks_logger.get_logger(filename=tmp.name, stream=None)
     logger.debug('Debug')
     logger.info('Info')
     logger.warning('Warning')
@@ -47,11 +47,11 @@ def test_redefine():
     stdout2 = StringIO.StringIO()
     tmp1 = tempfile.NamedTemporaryFile()
     tmp2 = tempfile.NamedTemporaryFile()
-    logger = pyyaks.logger.get_logger(filename=tmp1.name, stream=stdout1, filelevel=pyyaks.logger.WARNING)
+    logger = pyyaks_logger.get_logger(filename=tmp1.name, stream=stdout1, filelevel=pyyaks_logger.WARNING)
     logger.debug('Debug1')
     logger.info('Info1')
     logger.warning('Warning1')
-    logger = pyyaks.logger.get_logger(filename=tmp2.name, stream=stdout2, level=pyyaks.logger.DEBUG)
+    logger = pyyaks_logger.get_logger(filename=tmp2.name, stream=stdout2, level=pyyaks_logger.DEBUG)
     logger.debug('Debug2')
     logger.info('Info2')
     logger.warning('Warning2')

@@ -1,14 +1,14 @@
 import os
 import tempfile
 import time
-import pyyaks.logger
-import pyyaks.context as context
+from .. import logger as pyyaks_logger
+from .. import context
 import pytest
 import StringIO
 
 import cPickle as pickle
 
-logger = pyyaks.logger.get_logger()
+logger = pyyaks_logger.get_logger()
 
 src = context.ContextDict('src')
 files = context.ContextDict('files', basedir='pyyaks:data')

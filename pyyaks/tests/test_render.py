@@ -1,4 +1,4 @@
-import pyyaks.context as context
+from .. import context
 
 SR = context.ContextDict('sr')
 SR['a'] = 'a'

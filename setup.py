@@ -7,5 +7,5 @@ setup(name='pyyaks',
       description='Pipeline processing toolkit',
       author='Tom Aldcroft',
       author_email='aldcroft@head.cfa.harvard.edu',
-      packages=['pyyaks'],
+      packages=['pyyaks', 'pyyaks.tests'],
       )
