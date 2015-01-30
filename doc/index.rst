@@ -66,16 +66,14 @@ Concurrency
 Requirements
 ------------
 
-``Pyyaks`` requires python version 2.5 or greater (but not python 3).  The only
-3rd party module required is Jinja2.
+``Pyyaks`` requires python version 2.6 or greater (including python 3).  The only
+3rd party module required is ``Jinja2``, though one of the example scripts also
+requires the ``requests`` package.
 
 Download
-----------
+--------
 
-The ``pyyaks`` package is available for
-download at `<http://cxc.harvard.edu/contrib/pyyaks/downloads>`_.  
-
-The development version is found on github at `<https://github.com/taldcroft/pyyaks>`_.
+The ``pyyaks`` package is available on github at `<https://github.com/sot/pyyaks>`_.
 
 Tutorial
 -----------------
