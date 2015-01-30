@@ -83,7 +83,7 @@ def update_context(filename, keys=None):
     :rtype: None
     """
     logger.verbose('Restoring context from %s' % filename)
-    context = pickle.load(open(filename, 'r'))
+    context = pickle.load(open(filename, 'rb'))
     for name in context:
         if keys and name not in keys:
             continue
@@ -105,7 +105,7 @@ def store_context(filename, keys=None):
             dump_context = dict((x, CONTEXT[x]) for x in keys)
         else:
             dump_context = CONTEXT
-        pickle.dump(dump_context, open(filename, 'w'))
+        pickle.dump(dump_context, open(filename, 'wb'))
 
 class ContextValue(object):
     """Value with context that has a name and modification time. 
