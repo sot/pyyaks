@@ -6,12 +6,8 @@ import time
 from .. import logger as pyyaks_logger
 from .. import context
 import pytest
-import StringIO
 
-import six
 from six.moves import cPickle as pickle
-
-print('\nTest file {}\n'.format(__file__))
 
 logger = pyyaks_logger.get_logger()
 

@@ -6,7 +6,7 @@ import six
 
 def test_suppress_newline():
     stdout = six.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     for handler in logger.handlers:
         handler.suppress_newline = True
     logger.info('Info')
@@ -19,8 +19,8 @@ def test_suppress_newline():
 
 def test_suppress_newline_cm():
     stdout = six.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
-    with pyyaks.logger.newlines_suppressed(logger):
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
+    with pyyaks_logger.newlines_suppressed(logger):
         logger.info('Info')
         logger.warning('Warning')
     logger.info('Info')
@@ -29,7 +29,7 @@ def test_suppress_newline_cm():
 
 def test_stream():
     stdout = six.StringIO()
-    logger = pyyaks.logger.get_logger(level=pyyaks.logger.INFO, stream=stdout)
+    logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     logger.debug('Debug')
     logger.info('Info')
     logger.warning('Warning')
