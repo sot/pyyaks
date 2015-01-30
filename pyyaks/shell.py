@@ -1,5 +1,6 @@
 """Utilities to run subprocesses"""
-from __future__ import with_statement
+
+from __future__ import print_function, division, absolute_import
 
 import re
 import os
@@ -138,11 +139,11 @@ def bash_shell(cmdstr, logfile=None, importenv=False, getenv=False, env=None):
             except ValueError:
                 msg = ("Shell / expect got out of sync:\n" + 
                        "Response to 'echo $?' was apparently '%s'" % exitstr)
-                raise ShellError, msg
+                raise ShellError(msg)
                 
             if exitstatus > 0:
-                raise ShellError, 'Bash command %s failed with exit status %d' % (cmdstr,
-                                                                                  exitstatus)
+                raise ShellError('Bash command %s failed with exit status %d' % (cmdstr,
+                                                                                  exitstatus))
 
     # Update os.environ based on changes to environment made by cmdstr
     deltaenv = dict()
@@ -289,8 +290,7 @@ class Spawn(object):
     @staticmethod
     def _timeout_handler(pid, timeout):
         def handler(signum, frame):
-            raise RunTimeoutError, \
-                  'Process pid=%d timed out after %d secs' % (pid, timeout)
+            raise RunTimeoutError('Process pid=%d timed out after %d secs' % (pid, timeout))
         return handler
 
     def __init__(self, stdout=sys.stdout, timeout=None, catch=False,
@@ -367,13 +367,13 @@ class Spawn(object):
 
             signal.signal(signal.SIGALRM, prev_alarm_handler)
 
-        except RunTimeoutError, e:
+        except RunTimeoutError as e:
             if catch:
                 self._write('Warning - RunTimeoutError: %s\n' % e)
             else:
                 raise
 
-        except OSError, e:
+        except OSError as e:
             if catch:
                 self._write('Warning - OSError: %s\n' % e)
             else:

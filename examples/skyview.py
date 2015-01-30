@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import os
 import re
-import urllib
+import shutil
+
+import requests
 
 import pyyaks.task       # Pipeline definition and execution
 import pyyaks.logger     # Output logging control
@@ -44,8 +46,8 @@ source['ra'].format = '%.5f'
 source['dec'].format = '%.4f'
 
 # Initialize context dictionary to define processing file hierarchy 
-# from a base directory 'data'
-files = pyyaks.context.ContextDict('files', basedir='data')
+# from a base directory 'skyview'
+files = pyyaks.context.ContextDict('files', basedir='skyview')
 files.update({'source_dir': '{{source.id}}',
               'image':      '{{source.id}}/image',
               'context':    '{{source.id}}/context',
@@ -108,11 +110,12 @@ def get_image():
     described at http://skyview.gsfc.nasa.gov/docs/batchpage.html."""
 
     url = 'http://skyview.gsfc.nasa.gov/cgi-bin/images'
-    data = dict(Position='%s,%s' % (source['ra'], source['dec']),
-                Survey=source['survey'].val,
-                Return='GIF',
-                )
-    urllib.urlretrieve(url, filename=files['image.gif'].rel, data=urllib.urlencode(data))
+    params = dict(Position='%s,%s' % (source['ra'], source['dec']),
+                  Survey=source['survey'].val,
+                  Return='GIF')
+    response = requests.get(url, params=params, stream=True)
+    with open(files['image.gif'].rel, 'wb') as out_file:
+        shutil.copyfileobj(response.raw, out_file)
 
 
 @pyyaks.task.task()

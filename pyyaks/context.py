@@ -1,10 +1,13 @@
+from __future__ import print_function, division, absolute_import
+
 import re
 import os
 import time
 import stat
 import pdb
 import logging
-import cPickle as pickle
+
+from six.moves import cPickle as pickle
 from copy import deepcopy
 
 import jinja2
@@ -57,14 +60,14 @@ def render_args(*argids):
     """
     def decorate(func):
         def newfunc(*args, **kwargs):
-            ids = [x-1 for x in argids] if argids else range(len(args))
+            ids = [x-1 for x in argids] if argids else list(range(len(args)))
             newargs = [(render(x) if i in ids else x) for (i, x) in enumerate(args)]
             return func(*newargs, **kwargs)
 
         # Make an effort to copy func_name and func_doc.  Built-ins don't have these.
         try:   
-            newfunc.func_name = func.func_name
-            newfunc.func_doc = func.func_doc
+            newfunc.__name__ = func.__name__
+            newfunc.__doc__ = func.__doc__
         except AttributeError:
             pass
 
@@ -80,7 +83,7 @@ def update_context(filename, keys=None):
     :rtype: None
     """
     logger.verbose('Restoring context from %s' % filename)
-    context = pickle.load(open(filename, 'r'))
+    context = pickle.load(open(filename, 'rb'))
     for name in context:
         if keys and name not in keys:
             continue
@@ -102,7 +105,7 @@ def store_context(filename, keys=None):
             dump_context = dict((x, CONTEXT[x]) for x in keys)
         else:
             dump_context = CONTEXT
-        pickle.dump(dump_context, open(filename, 'w'))
+        pickle.dump(dump_context, open(filename, 'wb'))
 
 class ContextValue(object):
     """Value with context that has a name and modification time. 

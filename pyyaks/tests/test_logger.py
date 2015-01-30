@@ -1,12 +1,11 @@
-from __future__ import with_statement
-import tempfile
-import StringIO
-from .. import logger as pyyaks_logger
+from __future__ import print_function, division, absolute_import
 
-print('\nTest file: {}\n'.format(__file__))
+import tempfile
+from .. import logger as pyyaks_logger
+import six
 
 def test_suppress_newline():
-    stdout = StringIO.StringIO()
+    stdout = six.StringIO()
     logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     for handler in logger.handlers:
         handler.suppress_newline = True
@@ -19,7 +18,7 @@ def test_suppress_newline():
     assert stdout.getvalue() == "InfoWarningInfo\nWarning\n"
 
 def test_suppress_newline_cm():
-    stdout = StringIO.StringIO()
+    stdout = six.StringIO()
     logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     with pyyaks_logger.newlines_suppressed(logger):
         logger.info('Info')
@@ -29,7 +28,7 @@ def test_suppress_newline_cm():
     assert stdout.getvalue() == "InfoWarningInfo\nWarning\n"
 
 def test_stream():
-    stdout = StringIO.StringIO()
+    stdout = six.StringIO()
     logger = pyyaks_logger.get_logger(level=pyyaks_logger.INFO, stream=stdout)
     logger.debug('Debug')
     logger.info('Info')
@@ -45,8 +44,8 @@ def test_file():
     assert open(tmp.name).read() == "Info\nWarning\n"
     
 def test_redefine():
-    stdout1 = StringIO.StringIO()
-    stdout2 = StringIO.StringIO()
+    stdout1 = six.StringIO()
+    stdout2 = six.StringIO()
     tmp1 = tempfile.NamedTemporaryFile()
     tmp2 = tempfile.NamedTemporaryFile()
     logger = pyyaks_logger.get_logger(filename=tmp1.name, stream=stdout1, filelevel=pyyaks_logger.WARNING)

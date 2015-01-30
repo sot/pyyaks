@@ -1,5 +1,6 @@
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
-from __future__ import with_statement
+
+from __future__ import print_function, division, absolute_import
 
 import pdb
 import sys
@@ -12,6 +13,7 @@ import logging
 import pyyaks.context
 import pyyaks.logger
 import pyyaks.shell
+import collections
 
 class NullHandler(logging.Handler):
     def emit(self, record):
@@ -48,11 +50,11 @@ def func_depend(func, *args, **kwargs):
     if isinstance(dep, (list, tuple)):
         func, args, kwargs = dep
         if func(*args, **kwargs):
-            logger.debug('Func %s succeeded' % func.func_name)
+            logger.debug('Func %s succeeded' % func.__name__)
         else:
-            logger.debug('Func %s failed' % func.func_name)
+            logger.debug('Func %s failed' % func.__name__)
             if deptype == 'depends':
-                raise DependFuncFailure, 'Depend function %s false' % func.func_name
+                raise DependFuncFailure('Depend function %s false' % func.__name__)
             else:
                 return False                
 
@@ -146,14 +148,14 @@ class TaskDecor(object):
                 raise
             except:
                 if status['fail'] is False:
-                    logger.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    logger.error('%s: %s\n\n' % (func.__name__, traceback.format_exc()))
                     status['fail'] = True
                 raise
             finally:
                 self.teardown()
 
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
+        new_func.__name__ = func.__name__
+        new_func.__doc__ = func.__doc__
         return new_func
 
 class chdir(TaskDecor):
@@ -241,7 +243,7 @@ def task(run=None):
 
     def decorate(func):
         def new_func(*args, **kwargs):
-            runval = run(func.func_name) if callable(run) else run
+            runval = run(func.__name__) if isinstance(run, collections.Callable) else run
             if runval is False:
                 return
             elif runval is True:
@@ -254,7 +256,7 @@ def task(run=None):
 
             logger.verbose('')
             logger.verbose('-' * 60)
-            logger.info(' Running task: %s at %s' % (func.func_name, time.ctime()))
+            logger.info(' Running task: %s at %s' % (func.__name__, time.ctime()))
             logger.verbose('-' * 60)
 
             try:
@@ -266,11 +268,11 @@ def task(run=None):
                 pass
             except:
                 if status['fail'] is False:
-                    logger.error('%s: %s\n\n' % (func.func_name, traceback.format_exc()))
+                    logger.error('%s: %s\n\n' % (func.__name__, traceback.format_exc()))
                     status['fail'] = True
                 
-        new_func.func_name = func.func_name
-        new_func.func_doc = func.func_doc
+        new_func.__name__ = func.__name__
+        new_func.__doc__ = func.__doc__
         return new_func
     return decorate
 
