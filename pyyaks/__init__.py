@@ -10,4 +10,4 @@ def test(*args, **kwargs):
     print(pkg_rootdir, pkg_name)
     pytest.main(list(args), **kwargs)
 
-__version__ = '3.3.2'
+__version__ = '3.3.3'
