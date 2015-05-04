@@ -366,7 +366,7 @@ class ContextDict(dict):
         else:
             # Split on : which is not followed by \ (which would almost certainly
             # be a Windows file path like C:\\Users).
-            non_windows_colon = re.compile(r':[^\\]')
+            non_windows_colon = re.compile(r':(?=[^\\])')
             vals = [os.path.abspath(x) for x in non_windows_colon.split(val)]
             self._basedir = ':'.join(vals)
 
