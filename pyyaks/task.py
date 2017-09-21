@@ -1,3 +1,4 @@
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Module to support executing a single task (processing step) in the pyaxx pipeline."""
 
 from __future__ import print_function, division, absolute_import

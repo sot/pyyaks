@@ -1,3 +1,4 @@
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
 """Customize logging to add a VERBOSE level and provide a logger for which
 the trailing newline can be suppressed.
 """
