@@ -68,7 +68,7 @@ def _fix_paths(envs, pathvars=('PATH', 'PERLLIB', 'PERL5LIB', 'PYTHONPATH',
 
     # Process env vars that are contained in the PATH_ENVS set
     for key in set(envs.keys()) & set(pathvars):
-        path_ins = envs[key].split(':')
+        path_ins = envs[key].split(os.pathsep)
         pathset = set()
         path_outs = []
         # Working from right to left add each path that hasn't been included yet.
@@ -76,7 +76,7 @@ def _fix_paths(envs, pathvars=('PATH', 'PERLLIB', 'PERL5LIB', 'PYTHONPATH',
             if path not in pathset:
                 pathset.add(path)
                 path_outs.append(path)
-        envs[key] = ':'.join(reversed(path_outs))
+        envs[key] = os.pathsep.join(reversed(path_outs))
 
 def _parse_keyvals(keyvals):
     """Parse the key=val pairs from the newline-separated string.
