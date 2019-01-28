@@ -9,4 +9,4 @@ def test(*args, **kwargs):
     import testr
     return testr.test(*args, **kwargs)
 
-__version__ = '3.3.4'
+__version__ = '3.3.5'

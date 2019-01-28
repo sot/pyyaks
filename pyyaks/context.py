@@ -194,7 +194,7 @@ class ContextValue(object):
             # Note that os.path.join(a,b) returns b is b is already absolute
             ext = ('.' + self.ext if self.ext else '')
             strval0 = strval
-            for basedir in self.basedir.split(':'):
+            for basedir in self.basedir.split(os.pathsep):
                 strval = pyyaks.fileutil.relpath(os.path.join(basedir, strval0) + ext)
                 if os.path.exists(strval):
                     break
@@ -209,8 +209,8 @@ class ContextValue(object):
     def rel(self):
         """File context value as a relative path or self._val if not a file.
 
-        Basedir can have multiple base paths separated by ':' like the linux
-        PATH.  The first base path for which the content file path exists is
+        Basedir can have multiple base paths separated by ':' (os.pathsep) like the
+        linux PATH.  The first base path for which the content file path exists is
         returned, or if none exist then the last relative path will be returned.
         """
         return str(self)
@@ -219,8 +219,8 @@ class ContextValue(object):
     def abs(self):
         """File context value as an absolute path or self._val if not a file
 
-        Basedir can have multiple base paths separated by ':' like the linux
-        PATH.  The first base path for which the content file path exists is
+        Basedir can have multiple base paths separated by ':' (os.pathsep) like the
+        linux PATH.  The first base path for which the content file path exists is
         returned, or if none exist then the last absolute path will be returned.
         """
         return str(self._val) if (self.basedir is None) else  os.path.abspath(str(self))
@@ -369,7 +369,7 @@ class ContextDict(dict):
             # be a Windows file path like C:\\Users).
             non_windows_colon = re.compile(r':(?=[^\\])')
             vals = [os.path.abspath(x) for x in non_windows_colon.split(val)]
-            self._basedir = ':'.join(vals)
+            self._basedir = os.pathsep.join(vals)
 
     basedir = property(get_basedir, set_basedir)
 
