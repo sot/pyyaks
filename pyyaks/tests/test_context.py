@@ -2,6 +2,7 @@
 from __future__ import print_function, division, absolute_import
 
 import os
+from pathlib import Path
 import tempfile
 import time
 from .. import logger as pyyaks_logger
@@ -15,11 +16,35 @@ logger = pyyaks_logger.get_logger()
 src = context.ContextDict('src')
 files = context.ContextDict('files', basedir='pyyaks:data')
 
+def test_fspath(tmpdir):
+    """Test ContextValue.__fspath__() for PathLike ABC"""
+
+    # tmpdir = str(tmpdir)
+    filename = 'junk'
+    src['junk'] = filename
+    fs = context.ContextDict('test_fspath', basedir=str(tmpdir))
+    fs['fspath'] = '{{ src.junk }}'
+
+    assert not os.path.exists(fs['fspath'])
+    assert not Path(fs['fspath']).exists()
+
+    fspath = Path(tmpdir, filename)
+    fspath.touch()
+
+    assert os.path.exists(fs['fspath'])
+    assert Path(fs['fspath']).exists()
+
+    with open(fs['fspath'], 'w') as fh:
+        fh.write('hello')
+
+    with open(fs['fspath']) as fh:
+        assert fh.read() == 'hello'
+
 def test_format_filter():
     src['obsid'] = 123
     src['test_format'] = '{{ "%05d"|format(src.obsid.val) }}'
     assert str(src['test_format']) == '00123'
-    
+
 def test_set_by_key():
     src['obsid'] = 123
     src['srcdir'] = 'obs{{ src.obsid }}/{{src.nested}}'
@@ -71,7 +96,7 @@ def test_multiple_basedir_paths():
     files['context'] = 'context'
     assert files['context.py'].rel == 'pyyaks/context.py'
     assert files['context.py'].abs == os.path.join(os.getcwd(), 'pyyaks/context.py')
-    assert files['evt2.fits'].rel == 'data/obs123/nested2/acis_evt2.fits'    
+    assert files['evt2.fits'].rel == 'data/obs123/nested2/acis_evt2.fits'
 
 def test_dot_in_key():
     with pytest.raises(ValueError):
@@ -81,12 +106,12 @@ def test_abs_file1():
     files['abs'] = '/usr/bin/env'
     assert files['abs'].rel == '/usr/bin/env'
     assert files['abs'].abs == '/usr/bin/env'
-    
+
 def test_abs_file2():
     files['abs'] = os.getcwd()
     assert files['abs'].rel == ''
     assert files['abs'].abs == os.getcwd()
-    
+
 def test_file_mtime():
     tmp = tempfile.NamedTemporaryFile()
     files['tmp'] = tmp.name
@@ -128,7 +153,7 @@ def test_store_update_context():
     assert files['srcdir'].rel == 'data/obs123/nested2'
     assert files.rel.srcdir == 'data/obs123/nested2'
     assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
-    
+
 def test_update_basedir():
     files['tmpfile'] = 'tmpfile'
     a = files['tmpfile']

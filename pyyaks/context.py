@@ -201,6 +201,14 @@ class ContextValue(object):
 
         return strval
 
+    def __fspath__(self):
+        """ABC os.PathLike interface ContextValue is directly useable in Path or
+        os.path or open, etc.
+
+        https://docs.python.org/3/library/os.html#os.PathLike
+        """
+        return str(self)
+
     @property
     def type(self):
         return 'value' if (self.basedir is None) else 'file'
