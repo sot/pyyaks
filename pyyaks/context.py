@@ -40,10 +40,10 @@ def render_args(*argids):
     """
     Decorate a function so that the specified arguments are rendered via
     context.render() before being passed to function.  Keyword arguments are
-    unaffected.  
+    unaffected.
 
     Examples::
-    
+
       # Apply render() to all 3 args
       @context.render_args()
       def func(arg1, arg2, arg3):
@@ -66,7 +66,7 @@ def render_args(*argids):
             return func(*newargs, **kwargs)
 
         # Make an effort to copy func_name and func_doc.  Built-ins don't have these.
-        try:   
+        try:
             newfunc.__name__ = func.__name__
             newfunc.__doc__ = func.__doc__
         except AttributeError:
@@ -92,7 +92,7 @@ def update_context(filename, keys=None):
             raise KeyError('ContextDict %s found in %s but not in existing CONTEXT' %
                            (name, filename))
         CONTEXT[name].update(context[name])
-        
+
 def store_context(filename, keys=None):
     """Store the current context to ``filename``.
 
@@ -109,7 +109,7 @@ def store_context(filename, keys=None):
         pickle.dump(dump_context, open(filename, 'wb'))
 
 class ContextValue(object):
-    """Value with context that has a name and modification time. 
+    """Value with context that has a name and modification time.
 
     :param val: initial value (optional)
     :param name: context value name
@@ -172,13 +172,13 @@ class ContextValue(object):
 
     def __unicode__(self):
         return str(self)
-    
+
     def __str__(self):
         strval = val = self._val
         if val is None:
             raise ValueError("Context value '%s' is undefined" % self.fullname)
         template_tag = re.compile(r'{[%{]')
-        try:                            
+        try:
             # Following line will give TypeError unless val is string-like
             while (template_tag.search(val)):
                 template = jinja2.Template(val)
@@ -404,10 +404,9 @@ class _ContextDictAccessor(object):
 
     def __setattr__(self, name, value):
         setattr(self._contextdict[name], self._attr, value)
-        
+
     def __getitem__(self, name):
         return self.__getattr__(name)
-    
+
     def __setitem__(self, name, value):
         self.__setattr__(name, value)
-
