@@ -19,7 +19,6 @@ files = context.ContextDict('files', basedir='pyyaks:data')
 def test_fspath(tmpdir):
     """Test ContextValue.__fspath__() for PathLike ABC"""
 
-    # tmpdir = str(tmpdir)
     filename = 'junk'
     src['junk'] = filename
     fs = context.ContextDict('test_fspath', basedir=str(tmpdir))
