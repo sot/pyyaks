@@ -1,6 +1,8 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 from __future__ import print_function
 
+import ska_helpers
+
 
 def test(*args, **kwargs):
     '''
@@ -9,4 +11,4 @@ def test(*args, **kwargs):
     import testr
     return testr.test(*args, **kwargs)
 
-__version__ = '4.4'
+__version__ = ska_helpers.get_version(__package__)
