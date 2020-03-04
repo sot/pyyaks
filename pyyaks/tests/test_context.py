@@ -67,10 +67,10 @@ def test_nested():
     assert str(src['srcdir']) == 'obs123/nested2'
 
 def test_get_accessor():
-    assert files.rel['srcdir'] == 'data/obs123/nested2'
+    assert files.rel['srcdir'] == str(Path('data/obs123/nested2'))
 
 def test_get_attr():
-    assert files.rel.srcdir == 'data/obs123/nested2'
+    assert files.rel.srcdir == str(Path('data/obs123/nested2'))
 
 def test_auto_create():
     src['ra'].format = '%.2f'
@@ -85,17 +85,17 @@ def test_format():
 
 def test_file_rel():
     assert str(files['evt2']) == files['evt2'].rel
-    assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
-    assert context.render('{{files.evt2.fits}}') == 'data/obs123/nested2/acis_evt2.fits'
+    assert str(files['evt2.fits']) == str(Path('data/obs123/nested2/acis_evt2.fits'))
+    assert context.render('{{files.evt2.fits}}') == str(Path('data/obs123/nested2/acis_evt2.fits'))
 
 def test_file_abs():
-    assert files['evt2.fits'].abs == os.path.join(os.getcwd(), 'data/obs123/nested2/acis_evt2.fits')
+    assert files['evt2.fits'].abs == os.path.join(os.getcwd(), str(Path('data/obs123/nested2/acis_evt2.fits')))
 
 def test_multiple_basedir_paths():
     files['context'] = 'context'
-    assert files['context.py'].rel == 'pyyaks/context.py'
-    assert files['context.py'].abs == os.path.join(os.getcwd(), 'pyyaks/context.py')
-    assert files['evt2.fits'].rel == 'data/obs123/nested2/acis_evt2.fits'
+    assert files['context.py'].rel == str(Path('pyyaks/context.py'))
+    assert files['context.py'].abs == os.path.join(os.getcwd(), 'pyyaks', 'context.py')
+    assert files['evt2.fits'].rel == str(Path('data/obs123/nested2/acis_evt2.fits'))
 
 def test_dot_in_key():
     with pytest.raises(ValueError):
@@ -103,8 +103,8 @@ def test_dot_in_key():
 
 def test_abs_file1():
     files['abs'] = '/usr/bin/env'
-    assert files['abs'].rel == '/usr/bin/env'
-    assert files['abs'].abs == '/usr/bin/env'
+    assert files['abs'].rel == str(Path('/usr/bin/env').absolute())
+    assert files['abs'].abs == str(Path('/usr/bin/env').absolute())
 
 def test_abs_file2():
     files['abs'] = os.getcwd()
@@ -149,19 +149,19 @@ def test_store_update_context():
 
     assert str(src['ra']) == '1.4343'
     assert str(src['srcdir']) == 'obs123/nested2'
-    assert files['srcdir'].rel == 'data/obs123/nested2'
-    assert files.rel.srcdir == 'data/obs123/nested2'
-    assert str(files['evt2.fits']) == 'data/obs123/nested2/acis_evt2.fits'
+    assert files['srcdir'].rel == str(Path('data/obs123/nested2'))
+    assert files.rel.srcdir == str(Path('data/obs123/nested2'))
+    assert str(files['evt2.fits']) == str(Path('data/obs123/nested2/acis_evt2.fits'))
 
 def test_update_basedir():
     files['tmpfile'] = 'tmpfile'
     a = files['tmpfile']
-    assert files['tmpfile'].rel == 'data/tmpfile'
+    assert files['tmpfile'].rel == str(Path('data/tmpfile'))
     files.basedir = 'newdata'
-    assert files['tmpfile'].rel == 'newdata/tmpfile'
-    assert a.rel == 'newdata/tmpfile'
+    assert files['tmpfile'].rel == str(Path('newdata/tmpfile'))
+    assert a.rel == str(Path('newdata/tmpfile'))
     files.basedir = 'data'
-    assert files['tmpfile'].rel == 'data/tmpfile'
+    assert files['tmpfile'].rel == str(Path('data/tmpfile'))
 
 
 def test_context_cache():
