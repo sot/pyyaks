@@ -304,6 +304,5 @@ def test_reuse_context_dict_fail():
     Test that getting a ContextDict twice but with different basedir fails.
     """
     c = context.ContextDict('c1')
-    with pytest.raises(ValueError) as err:
+    with pytest.raises(ValueError, match=r"Re-using context name 'c1' but basedirs"):
         context.ContextDict('c1', basedir='something')
-    assert 'ValueError: Re-using' in str(err)
