@@ -254,6 +254,7 @@ class ContextDict(dict):
     :param basedir: base directory for file context
     """
     def __new__(cls, name=None, basedir=None):
+        basedir = get_windows_safe_basedir(basedir)
         if name in CONTEXT:
             if basedir != CONTEXT[name].basedir:
                 raise ValueError("Re-using context name '{}' but basedirs don't match "
@@ -369,17 +370,21 @@ class ContextDict(dict):
     def get_basedir(self):
         return self._basedir
 
-    def set_basedir(self, val):
-        if val is None:
-            self._basedir = None
-        else:
-            # Split on : which is not followed by \ (which would almost certainly
-            # be a Windows file path like C:\\Users).
-            non_windows_colon = re.compile(r':(?=[^\\])')
-            vals = [os.path.abspath(x) for x in non_windows_colon.split(val)]
-            self._basedir = os.pathsep.join(vals)
+    def set_basedir(self, val: str | None):
+        self._basedir = get_windows_safe_basedir(val)
 
     basedir = property(get_basedir, set_basedir)
+
+
+def get_windows_safe_basedir(val: str | None) -> str | None:
+    if val is None:
+        return None
+
+    # Split on : which is not followed by \ (which would almost certainly
+    # be a Windows file path like C:\\Users).    non_windows_colon = re.compile(r':(?=[^\\])')
+    non_windows_colon = re.compile(r':(?=[^\\])')
+    vals = [os.path.abspath(x) for x in non_windows_colon.split(val)]
+    return os.pathsep.join(vals)
 
 
 class _ContextDictAccessor(object):
